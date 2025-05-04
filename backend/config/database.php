@@ -84,7 +84,18 @@ function executeQuery($sql, $params = [], $types = null) {
     
     // If no parameters, execute a simple query
     if (empty($params)) {
-        $result = $conn->query($sql);
+        $queryResult = $conn->query($sql);
+        
+        // Check if it's a SELECT query
+        if (strpos(strtoupper($sql), 'SELECT') === 0) {
+            if ($queryResult && $queryResult instanceof mysqli_result) {
+                $result = $queryResult->fetch_all(MYSQLI_ASSOC);
+            } else {
+                $result = false;
+            }
+        } else {
+            $result = $queryResult;
+        }
     } else {
         // Use prepared statement
         $stmt = $conn->prepare($sql);
@@ -116,7 +127,12 @@ function executeQuery($sql, $params = [], $types = null) {
             
             // Get result for SELECT queries
             if (strpos(strtoupper($sql), 'SELECT') === 0) {
-                $result = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                $queryResult = $stmt->get_result();
+                if ($queryResult) {
+                    $result = $queryResult->fetch_all(MYSQLI_ASSOC);
+                } else {
+                    $result = false;
+                }
             } else {
                 $result = true;
             }

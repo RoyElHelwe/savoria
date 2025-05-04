@@ -42,6 +42,39 @@ if (!$data) {
     exit;
 }
 
+// Normalize field names to handle different naming conventions
+$normalizedData = [];
+// Map all possible field names to their standard names
+$fieldMapping = [
+    'name' => 'name',
+    'customer_name' => 'name',
+    'email' => 'email',
+    'customer_email' => 'email',
+    'phone' => 'phone',
+    'customer_phone' => 'phone',
+    'date' => 'date',
+    'reservation_date' => 'date',
+    'time' => 'time',
+    'reservation_time' => 'time',
+    'guests' => 'guests',
+    'party_size' => 'guests',
+    'special_requests' => 'special_requests',
+    'specialRequests' => 'special_requests'
+];
+
+// Loop through the field mapping and set normalized values
+foreach ($fieldMapping as $originalField => $normalizedField) {
+    if (isset($data[$originalField]) && !empty($data[$originalField])) {
+        $normalizedData[$normalizedField] = $data[$originalField];
+    }
+}
+
+// Replace original data with normalized data
+$data = $normalizedData;
+
+// Debug log
+error_log("Normalized reservation data: " . json_encode($data));
+
 // Required fields validation
 $requiredFields = ['date', 'time', 'name', 'email', 'phone', 'guests'];
 foreach ($requiredFields as $field) {
@@ -151,15 +184,68 @@ if ($result === false) {
 // Get the newly created reservation ID
 $reservationId = getLastInsertId();
 
+// Log reservation ID for debugging
+error_log("Created reservation with ID: " . $reservationId);
+
+// If getLastInsertId() failed, try direct SQL approach
+if ($reservationId == 0) {
+    error_log("getLastInsertId() returned 0, trying direct SQL approach");
+    $lastIdQuery = "SELECT LAST_INSERT_ID() as last_id";
+    $lastIdResult = executeQuery($lastIdQuery);
+    
+    if ($lastIdResult && isset($lastIdResult[0]['last_id'])) {
+        $reservationId = (int)$lastIdResult[0]['last_id'];
+        error_log("Direct SQL approach got reservation ID: " . $reservationId);
+    } else {
+        error_log("Direct SQL approach also failed to get last insert ID");
+    }
+}
+
+// If we still have no ID, try to find the reservation by its details
+if ($reservationId == 0) {
+    error_log("Still couldn't get reservation ID, trying to find by details");
+    $findQuery = "SELECT id FROM reservations WHERE date = ? AND time = ? AND name = ? AND email = ? AND phone = ? ORDER BY id DESC LIMIT 1";
+    $findParams = [$data['date'], $data['time'], $data['name'], $data['email'], $data['phone']];
+    $findTypes = 'sssss';
+    $findResult = executeQuery($findQuery, $findParams, $findTypes);
+    
+    if ($findResult && is_array($findResult) && !empty($findResult) && isset($findResult[0]['id'])) {
+        $reservationId = (int)$findResult[0]['id'];
+        error_log("Found reservation by details with ID: " . $reservationId);
+    } else {
+        error_log("Failed to find reservation by details");
+    }
+}
+
 // Get the created reservation
 $query = "SELECT * FROM reservations WHERE id = ?";
 $params = [$reservationId];
 $types = 'i';
 $result = executeQuery($query, $params, $types);
 
-if (!$result) {
+// Additional error logging
+if ($result === false || $result === null) {
+    error_log("Database error: Failed to retrieve reservation with ID " . $reservationId);
     http_response_code(500); // Internal Server Error
-    echo json_encode(['success' => false, 'error' => 'Failed to retrieve created reservation']);
+    echo json_encode([
+        'success' => false, 
+        'error' => 'Failed to retrieve created reservation',
+        'debug_info' => [
+            'reservation_id' => $reservationId,
+            'query' => $query
+        ]
+    ]);
+    exit;
+}
+
+if (!is_array($result) || empty($result)) {
+    error_log("Reservation with ID " . $reservationId . " was not found after creation");
+    http_response_code(500); // Internal Server Error
+    echo json_encode([
+        'success' => false, 
+        'error' => 'Reservation was created but could not be retrieved',
+        'reservation_id' => $reservationId
+    ]);
     exit;
 }
 
