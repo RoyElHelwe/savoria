@@ -153,9 +153,8 @@ try {
     $conn->query("
         CREATE TABLE IF NOT EXISTS settings (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            setting_key VARCHAR(50) NOT NULL UNIQUE,
-            setting_value TEXT NOT NULL,
-            setting_type ENUM('string', 'number', 'boolean', 'json') NOT NULL DEFAULT 'string',
+            name VARCHAR(255) NOT NULL UNIQUE,
+            value TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -169,10 +168,44 @@ try {
         ON DUPLICATE KEY UPDATE id=id;
     ");
 
+    // Insert default settings if they don't exist
+    $defaultSettings = [
+        ['restaurant_name', 'Savoria Restaurant'],
+        ['address', '123 Main Street, Cityville'],
+        ['phone', '(123) 456-7890'],
+        ['email', 'contact@savoria.com'],
+        ['reservation_max_days', '30'],
+        ['reservation_min_hours', '2'],
+        ['reservation_time_slot', '30'],
+        ['reservation_duration', '90']
+    ];
+
+    foreach ($defaultSettings as $setting) {
+        $name = $setting[0];
+        $value = $setting[1];
+    
+        // Check if setting exists
+        $stmt = $conn->prepare("SELECT id FROM settings WHERE name = ?");
+        $stmt->bind_param("s", $name);
+        $stmt->execute();
+        $result = $stmt->get_result();
+    
+        if ($result->num_rows === 0) {
+            // Insert the setting
+            $insertStmt = $conn->prepare("INSERT INTO settings (name, value) VALUES (?, ?)");
+            $insertStmt->bind_param("ss", $name, $value);
+            $insertStmt->execute();
+            $insertStmt->close();
+        }
+    
+        $stmt->close();
+    }
+    
     // Commit transaction
     $conn->commit();
     
     echo "Database setup completed successfully!";
+    
     
 } catch (Exception $e) {
     // Roll back transaction on error

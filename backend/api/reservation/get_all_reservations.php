@@ -11,7 +11,7 @@
 // Set headers for JSON response
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET');
+header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 // Handle preflight OPTIONS request
@@ -53,11 +53,11 @@ if (!$payload) {
 }
 
 // Get user ID from the JWT payload
-$userId = isset($payload->user_id) ? $payload->user_id : null;
+$userId = isset($payload['user_id']) ? $payload['user_id'] : null;
 
 if (!$userId) {
     http_response_code(401); // Unauthorized
-    echo json_encode(['success' => false, 'error' => 'Invalid token']);
+    echo json_encode(['success' => false, 'error' => 'User ID not found in token']);
     exit;
 }
 

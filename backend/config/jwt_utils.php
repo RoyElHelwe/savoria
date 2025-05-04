@@ -4,7 +4,7 @@
  */
 
 // JWT Secret Key (change this in production and keep it secure)
-define('JWT_SECRET', 'your_jwt_secret_key_change_in_production');
+define('JWT_SECRET', 'savoria_jwt_secret_key');
 define('JWT_EXPIRY', 3600); // 1 hour in seconds
 
 /**

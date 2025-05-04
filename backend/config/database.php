@@ -11,6 +11,41 @@ define('DB_PASS', '');     // Change in production
 define('DB_PORT', 3306);
 
 /**
+ * Database Class for handling connections
+ */
+class Database {
+    private $host = DB_HOST;
+    private $db_name = DB_NAME;
+    private $username = DB_USER;
+    private $password = DB_PASS;
+    private $port = DB_PORT;
+    private $conn;
+    
+    /**
+     * Get the database connection
+     * 
+     * @return mysqli The database connection
+     */
+    public function getConnection() {
+        $this->conn = null;
+        
+        try {
+            $this->conn = new mysqli($this->host, $this->username, $this->password, $this->db_name, $this->port);
+            $this->conn->set_charset("utf8mb4");
+            
+            if ($this->conn->connect_error) {
+                throw new Exception("Connection error: " . $this->conn->connect_error);
+            }
+        } catch (Exception $e) {
+            error_log("Database connection error: " . $e->getMessage());
+            // In production, you might want to handle this more gracefully
+        }
+        
+        return $this->conn;
+    }
+}
+
+/**
  * Create a database connection
  * 
  * @return mysqli|null Database connection or null on failure
