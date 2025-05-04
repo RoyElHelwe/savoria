@@ -225,3 +225,86 @@ export const getAllReservations = async (): Promise<ReservationsResponse> => {
     };
   }
 };
+
+/**
+ * Confirms a reservation
+ * 
+ * @param reservationId - The reservation ID to confirm
+ * @returns Promise resolving to confirmation result
+ */
+export const confirmReservation = async (reservationId: number): Promise<ReservationResponse> => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      return {
+        success: false,
+        error: 'User not authenticated'
+      };
+    }
+    
+    const response = await fetch(`${BASE_URL}/update_reservation_status.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ 
+        reservation_id: reservationId,
+        status: 'confirmed'
+      })
+    });
+    
+    const data = await response.json();
+    
+    return data;
+  } catch (error) {
+    console.error(`Error confirming reservation ${reservationId}:`, error);
+    return {
+      success: false,
+      error: 'Failed to confirm reservation'
+    };
+  }
+};
+
+/**
+ * Rejects a reservation
+ * 
+ * @param reservationId - The reservation ID to reject
+ * @returns Promise resolving to rejection result
+ */
+export const rejectReservation = async (reservationId: number): Promise<ReservationResponse> => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      return {
+        success: false,
+        error: 'User not authenticated'
+      };
+    }
+    
+    const response = await fetch(`${BASE_URL}/update_reservation_status.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ 
+        reservation_id: reservationId,
+        status: 'cancelled',
+        rejection_reason: 'Rejected by administrator'
+      })
+    });
+    
+    const data = await response.json();
+    
+    return data;
+  } catch (error) {
+    console.error(`Error rejecting reservation ${reservationId}:`, error);
+    return {
+      success: false,
+      error: 'Failed to reject reservation'
+    };
+  }
+};
