@@ -7,18 +7,20 @@
 const BASE_URL = 'http://localhost/savoria/backend/api/reservation';
 
 export interface Reservation {
-  id: number;
-  date: string;
-  time: string;
-  name: string;
-  email: string;
-  phone: string;
-  guests: number;
-  special_requests?: string;
-  status: 'pending' | 'confirmed' | 'cancelled';
-  user_id?: number;
   created_at: string;
+  date: string;
+  email: string;
+  guests: number;
+  id: number;
+  name: string;
+  phone: string;
+  special_requests: string;
+  status: "pending" | "confirmed" | "cancelled" | "completed";
+  time: string;
   updated_at: string;
+  user_email: string | null;
+  user_id: number | null;
+  username: string | null;
 }
 
 export interface ReservationRequest {

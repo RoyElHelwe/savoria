@@ -1,276 +1,159 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-
-interface ReservationFormData {
-  date: string;
-  time: string;
-  guests: number;
-  name: string;
-  email: string;
-  phone: string;
-  special_requests: string;
-}
+import ReservationForm from '../components/ReservationForm';
+import { useSettings } from '../contexts/SettingsContext';
+import { MapPin, Clock, Phone, Users, CalendarCheck } from 'lucide-react';
 
 const Reservation = () => {
-  const { user, isAuthenticated } = useAuth();
-  const navigate = useNavigate();
+  const { settings } = useSettings();
 
-  // Get tomorrow's date formatted as YYYY-MM-DD
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const formattedTomorrow = tomorrow.toISOString().split('T')[0];
-  
-  // Initialize form state
-  const [formData, setFormData] = useState<ReservationFormData>({
-    date: formattedTomorrow,
-    time: '19:00', // Default to 7pm
-    guests: 2,
-    name: user ? `${user.first_name} ${user.last_name}` : '',
-    email: user ? user.email : '',
-    phone: user?.phone || '',
-    special_requests: ''
-  });
-  
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
-  
-  // Available time slots
-  const timeSlots = [
-    '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', 
-    '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00'
-  ];
-  
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'guests' ? parseInt(value) : value
-    }));
-  };
-  
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSuccess(false);
-    
-    // Validation
-    if (!formData.date || !formData.time || !formData.name || !formData.email || !formData.phone) {
-      setError('Please fill in all required fields');
-      return;
-    }
-    
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      setError('Please enter a valid email address');
-      return;
-    }
-    
-    // Phone validation (simple validation, can be improved)
-    const phoneRegex = /^\+?[0-9\s\-()]{8,}$/;
-    if (!phoneRegex.test(formData.phone)) {
-      setError('Please enter a valid phone number');
-      return;
-    }
-    
-    setIsLoading(true);
-    
-    try {
-      // Mock API call - replace with actual call to your reservation service
-      setTimeout(() => {
-        setSuccess(true);
-        setIsLoading(false);
-        
-        // Reset form after 3 seconds and redirect
-        setTimeout(() => {
-          navigate('/');
-        }, 3000);
-      }, 1500);
-    } catch (err) {
-      setIsLoading(false);
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to make reservation. Please try again.');
-      }
-    }
+  // Format time from 24h to 12h
+  const formatTime = (time: string) => {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
   };
   
   return (
-    <div className="container mx-auto px-4 py-16">
-      <h1 className="text-4xl font-bold text-center mb-4">Make a Reservation</h1>
-      <p className="text-gray-600 text-center mb-10 max-w-2xl mx-auto">
-        Book your table online for a seamless dining experience. We look forward to serving you!
-      </p>
+    <div>
+      {/* Hero Section */}
+      <section className="relative bg-amber-700 text-white py-16">
+        <div className="absolute inset-0 bg-cover bg-center opacity-20" style={{ backgroundImage: "url('/images/reservation-bg.jpg')" }}></div>
+        <div className="container mx-auto px-4 relative z-10">
+          <div className="max-w-3xl mx-auto text-center">
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">Reserve Your Table</h1>
+            <p className="text-xl text-amber-100">
+              Experience exceptional dining with your friends and family at {settings.restaurant_name}
+            </p>
+          </div>
+        </div>
+      </section>
       
-      <div className="max-w-2xl mx-auto">
-        {success ? (
-          <div className="bg-green-50 border border-green-200 text-green-700 p-6 rounded-lg text-center">
-            <h3 className="text-xl font-bold mb-2">Reservation Confirmed!</h3>
-            <p>Thank you for your reservation. We've sent a confirmation to your email.</p>
-            <p className="mt-2">You will be redirected to the homepage shortly...</p>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            {error && (
-              <div className="bg-red-50 text-red-700 p-3 rounded-md mb-4">
-                {error}
-              </div>
-            )}
+      <section className="py-16 bg-gray-50">
+        <div className="container mx-auto px-4">
+          <div className="grid md:grid-cols-3 gap-8">
+            {/* Reservation Form */}
+            <div className="md:col-span-2">
+              <ReservationForm />
+            </div>
             
-            <form onSubmit={handleSubmit}>
-              <div className="grid md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label htmlFor="date" className="block text-gray-700 text-sm font-medium mb-1">
-                    Date*
-                  </label>
-                  <input
-                    id="date"
-                    name="date"
-                    type="date"
-                    value={formData.date}
-                    onChange={handleChange}
-                    min={formattedTomorrow}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    disabled={isLoading}
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="time" className="block text-gray-700 text-sm font-medium mb-1">
-                    Time*
-                  </label>
-                  <select
-                    id="time"
-                    name="time"
-                    value={formData.time}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    disabled={isLoading}
-                    required
-                  >
-                    {timeSlots.map(slot => (
-                      <option key={slot} value={slot}>
-                        {slot}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <label htmlFor="guests" className="block text-gray-700 text-sm font-medium mb-1">
-                  Number of Guests*
-                </label>
-                <select
-                  id="guests"
-                  name="guests"
-                  value={formData.guests}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  disabled={isLoading}
-                  required
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
-                    <option key={num} value={num}>
-                      {num} {num === 1 ? 'person' : 'people'}
-                    </option>
-                  ))}
-                  <option value="11">More than 10 people</option>
-                </select>
-              </div>
-              
-              <div className="grid md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label htmlFor="name" className="block text-gray-700 text-sm font-medium mb-1">
-                    Full Name*
-                  </label>
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    value={formData.name}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    disabled={isLoading}
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="phone" className="block text-gray-700 text-sm font-medium mb-1">
-                    Phone Number*
-                  </label>
-                  <input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    placeholder="+1 (123) 456-7890"
-                    disabled={isLoading}
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <label htmlFor="email" className="block text-gray-700 text-sm font-medium mb-1">
-                  Email Address*
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  disabled={isLoading}
-                  required
-                />
-              </div>
-              
-              <div className="mb-6">
-                <label htmlFor="special_requests" className="block text-gray-700 text-sm font-medium mb-1">
-                  Special Requests
-                </label>
-                <textarea
-                  id="special_requests"
-                  name="special_requests"
-                  value={formData.special_requests}
-                  onChange={handleChange}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  placeholder="Tell us about any special requirements or preferences..."
-                  disabled={isLoading}
-                ></textarea>
-              </div>
-              
-              <div className="flex justify-center">
-                <button
-                  type="submit"
-                  className="py-2 px-6 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-md transition disabled:opacity-70"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <span className="flex items-center justify-center">
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Processing...
+            {/* Info Section */}
+            <div className="space-y-8">
+              {/* Restaurant Hours */}
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <h3 className="text-xl font-semibold mb-4 flex items-center">
+                  <Clock className="mr-2 h-5 w-5 text-amber-600" />
+                  Opening Hours
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Monday</span>
+                    <span className="font-medium">
+                      {settings.opening_hours.monday.closed 
+                        ? 'Closed' 
+                        : `${formatTime(settings.opening_hours.monday.open)} - ${formatTime(settings.opening_hours.monday.close)}`}
                     </span>
-                  ) : 'Confirm Reservation'}
-                </button>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Tuesday</span>
+                    <span className="font-medium">
+                      {settings.opening_hours.tuesday.closed 
+                        ? 'Closed' 
+                        : `${formatTime(settings.opening_hours.tuesday.open)} - ${formatTime(settings.opening_hours.tuesday.close)}`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Wednesday</span>
+                    <span className="font-medium">
+                      {settings.opening_hours.wednesday.closed 
+                        ? 'Closed' 
+                        : `${formatTime(settings.opening_hours.wednesday.open)} - ${formatTime(settings.opening_hours.wednesday.close)}`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Thursday</span>
+                    <span className="font-medium">
+                      {settings.opening_hours.thursday.closed 
+                        ? 'Closed' 
+                        : `${formatTime(settings.opening_hours.thursday.open)} - ${formatTime(settings.opening_hours.thursday.close)}`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Friday</span>
+                    <span className="font-medium">
+                      {settings.opening_hours.friday.closed 
+                        ? 'Closed' 
+                        : `${formatTime(settings.opening_hours.friday.open)} - ${formatTime(settings.opening_hours.friday.close)}`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Saturday</span>
+                    <span className="font-medium">
+                      {settings.opening_hours.saturday.closed 
+                        ? 'Closed' 
+                        : `${formatTime(settings.opening_hours.saturday.open)} - ${formatTime(settings.opening_hours.saturday.close)}`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Sunday</span>
+                    <span className="font-medium">
+                      {settings.opening_hours.sunday.closed 
+                        ? 'Closed' 
+                        : `${formatTime(settings.opening_hours.sunday.open)} - ${formatTime(settings.opening_hours.sunday.close)}`}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </form>
+              
+              {/* Contact Information */}
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <h3 className="text-xl font-semibold mb-4 flex items-center">
+                  <Phone className="mr-2 h-5 w-5 text-amber-600" />
+                  Contact Information
+                </h3>
+                <div className="space-y-4">
+                  <div className="flex items-start">
+                    <MapPin className="h-5 w-5 text-amber-600 mt-1 mr-3 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium">Address</p>
+                      <p className="text-gray-600">{settings.address}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start">
+                    <Phone className="h-5 w-5 text-amber-600 mt-1 mr-3 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium">Phone</p>
+                      <p className="text-gray-600">{settings.phone}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Reservation Tips */}
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <h3 className="text-xl font-semibold mb-4 flex items-center">
+                  <Users className="mr-2 h-5 w-5 text-amber-600" />
+                  Reservation Tips
+                </h3>
+                <ul className="space-y-3 text-gray-600">
+                  <li className="flex">
+                    <CalendarCheck className="h-5 w-5 text-amber-600 mt-1 mr-3 flex-shrink-0" />
+                    <span>Book at least {settings.reservation_settings.min_hours_in_advance} hours in advance to secure your preferred time slot.</span>
+                  </li>
+                  <li className="flex">
+                    <Users className="h-5 w-5 text-amber-600 mt-1 mr-3 flex-shrink-0" />
+                    <span>For parties of more than 8 people, please call us directly for special arrangements.</span>
+                  </li>
+                  <li className="flex">
+                    <Clock className="h-5 w-5 text-amber-600 mt-1 mr-3 flex-shrink-0" />
+                    <span>Reservations are held for 15 minutes after the scheduled time.</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      </section>
     </div>
   );
 };
