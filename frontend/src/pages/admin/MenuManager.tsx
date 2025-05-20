@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getMenu, getCategories, Category as ServiceCategory } from '../../services/menuService';
 
 // Import the type from MenuCard but alias it to avoid confusion
@@ -41,6 +41,27 @@ const adminMenuApi = async (endpoint: string, method: string, data?: any) => {
   }
 };
 
+// Image upload function
+const uploadImage = async (file: File) => {
+  const token = localStorage.getItem('token');
+  const formData = new FormData();
+  formData.append('image', file);
+  
+  try {
+    const response = await fetch('http://localhost/savoria/backend/api/admin/upload_image.php', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error uploading image:', error);
+    return { success: false, error: 'Image upload failed' };
+  }
+};
+
 // Admin menu service functions
 const getAllMenuItems = async () => {
   const response = await getMenu();
@@ -70,7 +91,7 @@ const getAllMenuItems = async () => {
 };
 
 const updateMenuItem = async (id: number, item: MenuItem) => {
-  return await adminMenuApi(`update_item`, 'PUT', item); // Removed duplicate id
+  return await adminMenuApi(`update_item`, 'PUT', item);
 };
 
 const addMenuItem = async (item: MenuItem) => {
@@ -106,6 +127,10 @@ const MenuManager = () => {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isAdding, setIsAdding] = useState<boolean>(false);
+  const [uploadedImage, setUploadedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Form state for editing or adding
   const [formData, setFormData] = useState<Partial<MenuItem>>({
@@ -150,6 +175,8 @@ const MenuManager = () => {
     setFormData(item);
     setIsEditing(true);
     setIsAdding(false);
+    setImagePreview(item.image_url || null);
+    setUploadedImage(null);
   };
 
   const handleAddNew = () => {
@@ -165,6 +192,11 @@ const MenuManager = () => {
     });
     setIsAdding(true);
     setIsEditing(false);
+    setImagePreview(null);
+    setUploadedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -194,18 +226,68 @@ const MenuManager = () => {
     }
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setUploadedImage(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleImageDelete = () => {
+    setUploadedImage(null);
+    setImagePreview(null);
+    setFormData({
+      ...formData,
+      image_url: ''
+    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     
     try {
+      // Step 1: Upload image if there's a new one
+      let finalImageUrl = formData.image_url || '';
+      
+      if (uploadedImage) {
+        setUploading(true);
+        const uploadResponse = await uploadImage(uploadedImage);
+        setUploading(false);
+        
+        if (uploadResponse.success) {
+          finalImageUrl = uploadResponse.image_url;
+        } else {
+          setError(uploadResponse.error || 'Failed to upload image');
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Step 2: Update or add menu item with the image URL
+      const itemData = {
+        ...formData,
+        image_url: finalImageUrl
+      };
+      
       if (isEditing && selectedItem) {
         // Update existing item
-        const response = await updateMenuItem(selectedItem.id, formData as MenuItem);
+        const response = await updateMenuItem(selectedItem.id, itemData as MenuItem);
         
         if (response.success) {
           setMenuItems(prev => 
-            prev.map(item => item.id === selectedItem.id ? { ...item, ...formData } : item)
+            prev.map(item => item.id === selectedItem.id ? { ...item, ...itemData } : item)
           );
           setSelectedItem(null);
           setIsEditing(false);
@@ -214,7 +296,7 @@ const MenuManager = () => {
         }
       } else if (isAdding) {
         // Add new item
-        const response = await addMenuItem(formData as MenuItem);
+        const response = await addMenuItem(itemData as MenuItem);
         
         if (response.success) {
           setMenuItems(prev => [...prev, response.data]);
@@ -228,6 +310,7 @@ const MenuManager = () => {
       console.error(err);
     } finally {
       setLoading(false);
+      setUploading(false);
     }
   };
 
@@ -261,6 +344,11 @@ const MenuManager = () => {
     setIsEditing(false);
     setIsAdding(false);
     setError(null);
+    setImagePreview(null);
+    setUploadedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   // Find category name by id
@@ -343,14 +431,49 @@ const MenuManager = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Image URL</label>
-                <input
-                  type="text"
-                  name="image_url"
-                  value={formData.image_url || ''}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Image</label>
+                <div className="flex items-center">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageChange}
+                    accept="image/jpeg, image/png, image/webp, image/gif"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                  {(imagePreview || formData.image_url) && (
+                    <button
+                      type="button"
+                      onClick={handleImageDelete}
+                      className="ml-2 p-2 text-red-600 hover:text-red-900"
+                      title="Remove image"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {/* Image Preview */}
+                {imagePreview && (
+                  <div className="mt-2">
+                    <img 
+                      src={"http://localhost/savoria/backend/api/public"+imagePreview} 
+                      alt="Preview" 
+                      className="h-24 w-auto object-cover rounded-md"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Image preview</p>
+                  </div>
+                )}
+                {!imagePreview && formData.image_url && (
+                  <div className="mt-2">
+                    <img 
+                      src={formData.image_url} 
+                      alt="Current" 
+                      className="h-24 w-auto object-cover rounded-md"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Current image</p>
+                  </div>
+                )}
               </div>
               
               <div className="md:col-span-2">
@@ -394,16 +517,16 @@ const MenuManager = () => {
               <button
                 type="submit"
                 className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors"
-                disabled={loading}
+                disabled={loading || uploading}
               >
-                {loading ? 'Saving...' : 'Save'}
+                {loading || uploading ? (uploading ? 'Uploading...' : 'Saving...') : 'Save'}
               </button>
               
               <button
                 type="button"
                 onClick={handleCancel}
                 className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
-                disabled={loading}
+                disabled={loading || uploading}
               >
                 Cancel
               </button>
@@ -430,7 +553,7 @@ const MenuManager = () => {
                 <td className="px-6 py-4 whitespace-nowrap">
                   {item.image_url ? (
                     <img 
-                      src={item.image_url} 
+                      src={"http://localhost/savoria/backend/api/public"+item.image_url} 
                       alt={item.name} 
                       className="h-12 w-12 object-cover rounded-md"
                     />
