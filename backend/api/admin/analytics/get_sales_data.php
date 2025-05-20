@@ -76,45 +76,46 @@ if (!in_array($timeframe, ['week', 'month', 'year'])) {
 
 // Get sales data based on timeframe
 $salesData = [];
+$currentDate = date('Y-m-d');
 
 switch ($timeframe) {
     case 'week':
         // Get sales data for the last 7 days
         $query = "SELECT 
-                    DATE_FORMAT(o.order_date, '%a') as day_label,
-                    DATE(o.order_date) as order_date,
+                    DATE_FORMAT(o.created_at, '%a') as day_label,
+                    DATE(o.created_at) as order_date,
                     SUM(o.total_amount) as total_sales
                   FROM orders o
                   WHERE o.status != 'cancelled'
-                  AND o.order_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-                  GROUP BY DATE(o.order_date), DATE_FORMAT(o.order_date, '%a')
+                  AND o.created_at >= DATE_SUB('$currentDate', INTERVAL 7 DAY)
+                  GROUP BY DATE(o.created_at), DATE_FORMAT(o.created_at, '%a')
                   ORDER BY order_date ASC";
         break;
         
     case 'month':
         // Get sales data for the current month by day
         $query = "SELECT 
-                    DAY(o.order_date) as day_label,
-                    DATE(o.order_date) as order_date,
+                    DAY(o.created_at) as day_label,
+                    DATE(o.created_at) as order_date,
                     SUM(o.total_amount) as total_sales
                   FROM orders o
                   WHERE o.status != 'cancelled'
-                  AND MONTH(o.order_date) = MONTH(CURDATE())
-                  AND YEAR(o.order_date) = YEAR(CURDATE())
-                  GROUP BY DATE(o.order_date)
+                  AND MONTH(o.created_at) = MONTH('$currentDate')
+                  AND YEAR(o.created_at) = YEAR('$currentDate')
+                  GROUP BY DATE(o.created_at)
                   ORDER BY order_date ASC";
         break;
         
     case 'year':
         // Get sales data for the last 12 months
         $query = "SELECT 
-                    DATE_FORMAT(o.order_date, '%b') as day_label,
-                    CONCAT(YEAR(o.order_date), '-', MONTH(o.order_date)) as month_year,
+                    DATE_FORMAT(o.created_at, '%b') as day_label,
+                    CONCAT(YEAR(o.created_at), '-', MONTH(o.created_at)) as month_year,
                     SUM(o.total_amount) as total_sales
                   FROM orders o
                   WHERE o.status != 'cancelled'
-                  AND o.order_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
-                  GROUP BY month_year, DATE_FORMAT(o.order_date, '%b')
+                  AND o.created_at >= DATE_SUB('$currentDate', INTERVAL 12 MONTH)
+                  GROUP BY month_year, DATE_FORMAT(o.created_at, '%b')
                   ORDER BY month_year ASC";
         break;
 }
@@ -139,34 +140,80 @@ try {
             ];
         }
     }
+    
+    // If no data was found for the selected timeframe, create empty date slots
+    if (empty($salesData)) {
+        switch ($timeframe) {
+            case 'week':
+                $start = strtotime('-6 days');
+                for ($i = 0; $i < 7; $i++) {
+                    $dayLabel = date('D', strtotime("+$i days", $start));
+                    $salesData[] = [
+                        'label' => $dayLabel,
+                        'amount' => 0
+                    ];
+                }
+                break;
+                
+            case 'month':
+                $daysInMonth = date('t');
+                for ($i = 1; $i <= $daysInMonth; $i++) {
+                    $salesData[] = [
+                        'label' => (string)$i,
+                        'amount' => 0
+                    ];
+                }
+                break;
+                
+            case 'year':
+                $monthsLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                foreach ($monthsLabels as $month) {
+                    $salesData[] = [
+                        'label' => $month,
+                        'amount' => 0
+                    ];
+                }
+                break;
+        }
+    }
+    
+    // Get summary statistics
+    $statsQuery = "SELECT 
+                  COUNT(*) as total_orders,
+                  SUM(total_amount) as total_sales,
+                  AVG(total_amount) as average_order_value
+                FROM orders
+                WHERE status != 'cancelled'";
+    
+    $statsStmt = $conn->prepare($statsQuery);
+    $statsStmt->execute();
+    $statsResult = $statsStmt->get_result();
+    $statsData = $statsResult->fetch_assoc();
+    
+    // Return data with a note if it's empty
+    $response = [
+        'success' => true,
+        'timeframe' => $timeframe,
+        'data' => $salesData,
+        'stats' => [
+            'total_orders' => (int)$statsData['total_orders'],
+            'total_sales' => (float)$statsData['total_sales'],
+            'average_order_value' => (float)$statsData['average_order_value']
+        ]
+    ];
+    
+    // Add a note if original data was empty
+    if (empty($result) || $result->num_rows === 0) {
+        $response['note'] = 'No sales data found for the specified timeframe. Showing empty template.';
+    }
+    
+    echo json_encode($response);
+    
 } catch (Exception $e) {
-    // Log error and return mock data
+    // Log error and return error response
     error_log("Database query error: " . $e->getMessage());
-    $salesData = []; // Ensure $salesData is empty to trigger mock data generation
+    echo json_encode([
+        'success' => false,
+        'error' => 'Database error occurred: ' . $e->getMessage()
+    ]);
 }
-
-// If no data is found (possibly because orders table is empty), return some mock data
-if (empty($salesData)) {
-    // For demo purposes only - in a real app, you might just return an empty array
-    $mockDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    
-    if ($timeframe === 'month') {
-        $mockDays = range(1, date('t')); // Range from 1 to number of days in current month
-    } else if ($timeframe === 'year') {
-        $mockDays = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    }
-    
-    foreach ($mockDays as $day) {
-        $salesData[] = [
-            'label' => (string)$day,
-            'amount' => mt_rand(800, 3000) // Random amount between 800 and 3000
-        ];
-    }
-}
-
-// Return the sales data
-echo json_encode([
-    'success' => true,
-    'timeframe' => $timeframe,
-    'data' => $salesData
-]);

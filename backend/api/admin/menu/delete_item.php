@@ -72,8 +72,8 @@ if (!isset($data['id'])) {
 
 $itemId = (int)$data['id'];
 
-// Check if the menu item exists
-$checkItemQuery = "SELECT id FROM menu_items WHERE id = ?";
+// Check if the menu item exists - using item_id instead of id based on database structure
+$checkItemQuery = "SELECT item_id FROM menu_items WHERE item_id = ?";
 $checkItemStmt = $conn->prepare($checkItemQuery);
 
 if ($checkItemStmt === false) {
@@ -90,10 +90,10 @@ if ($checkItemResult->num_rows === 0) {
     exit(json_encode(['success' => false, 'error' => 'Menu item not found']));
 }
 
-// Check if the item is used in any active orders
+// Check if the item is used in any active orders - using correct column/table names from schema
 $checkOrdersQuery = "SELECT COUNT(*) as count FROM order_items 
-                    JOIN orders ON order_items.order_id = orders.id
-                    WHERE order_items.item_id = ? AND orders.status IN ('pending', 'processing', 'ready')";
+                    JOIN orders ON order_items.order_id = orders.order_id
+                    WHERE order_items.item_id = ? AND orders.status IN ('pending', 'confirmed', 'preparing', 'out for delivery', 'ready for pickup')";
 $checkOrdersStmt = $conn->prepare($checkOrdersQuery);
 
 if ($checkOrdersStmt === false) {
@@ -108,8 +108,8 @@ $orderCount = $checkOrdersResult->fetch_assoc()['count'];
 
 // If item is used in active orders, just mark it as inactive instead of deleting
 if ($orderCount > 0) {
-    // Update the item to set it as inactive
-    $updateQuery = "UPDATE menu_items SET is_active = 0 WHERE id = ?";
+    // Update the item to set it as inactive - using item_id instead of id
+    $updateQuery = "UPDATE menu_items SET is_active = 0 WHERE item_id = ?";
     $updateStmt = $conn->prepare($updateQuery);
     
     if ($updateStmt === false) {
@@ -126,14 +126,14 @@ if ($orderCount > 0) {
         ]);
     } else {
         header("HTTP/1.1 500 Internal Server Error");
-        echo json_encode(['success' => false, 'error' => 'Failed to update menu item: ' . $conn->error]);
+        echo json_encode(['success' => false, 'error' => 'Failed to update menu item: ' . $updateStmt->error]);
     }
     
     exit();
 }
 
-// Delete the menu item if it's not in active orders
-$query = "DELETE FROM menu_items WHERE id = ?";
+// Delete the menu item if it's not in active orders - using item_id instead of id
+$query = "DELETE FROM menu_items WHERE item_id = ?";
 $stmt = $conn->prepare($query);
 
 if ($stmt === false) {
@@ -152,5 +152,5 @@ if ($stmt->execute()) {
     }
 } else {
     header("HTTP/1.1 500 Internal Server Error");
-    echo json_encode(['success' => false, 'error' => 'Failed to delete menu item: ' . $conn->error]);
-} 
+    echo json_encode(['success' => false, 'error' => 'Failed to delete menu item: ' . $stmt->error]);
+}

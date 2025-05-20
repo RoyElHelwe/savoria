@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: May 04, 2025 at 02:51 PM
+-- Generation Time: May 20, 2025 at 02:37 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -54,7 +54,7 @@ INSERT INTO `categories` (`id`, `name`, `description`, `image_url`, `display_ord
 --
 
 CREATE TABLE `menu_items` (
-  `id` int(11) NOT NULL,
+  `item_id` int(11) NOT NULL,
   `name` varchar(100) NOT NULL,
   `description` text DEFAULT NULL,
   `price` decimal(10,2) NOT NULL,
@@ -75,7 +75,7 @@ CREATE TABLE `menu_items` (
 -- Dumping data for table `menu_items`
 --
 
-INSERT INTO `menu_items` (`id`, `name`, `description`, `price`, `image_url`, `category_id`, `is_vegetarian`, `is_vegan`, `is_gluten_free`, `contains_nuts`, `spice_level`, `is_featured`, `is_active`, `created_at`, `updated_at`) VALUES
+INSERT INTO `menu_items` (`item_id`, `name`, `description`, `price`, `image_url`, `category_id`, `is_vegetarian`, `is_vegan`, `is_gluten_free`, `contains_nuts`, `spice_level`, `is_featured`, `is_active`, `created_at`, `updated_at`) VALUES
 (1, 'Garlic Breadd', 'Freshly baked bread with garlic butter and herbs', 7.00, '/images/garlic-bread.jpg', 1, 1, 0, 0, 0, 0, 1, 1, '2025-05-03 14:36:22', '2025-05-04 08:27:36'),
 (2, 'Mozzarella Sticks', 'Breaded mozzarella sticks served with marinara sauce', 7.99, '/images/mozzarella-sticks.jpg', 1, 1, 0, 0, 0, 0, 1, 1, '2025-05-03 14:36:22', '2025-05-03 14:36:22'),
 (3, 'Spicy Buffalo Wings', 'Crispy chicken wings tossed in our signature buffalo sauce', 10.99, '/images/buffalo-wings.jpg', 1, 0, 0, 1, 0, 3, 1, 1, '2025-05-03 14:36:22', '2025-05-03 14:36:22'),
@@ -94,17 +94,20 @@ INSERT INTO `menu_items` (`id`, `name`, `description`, `price`, `image_url`, `ca
 --
 
 CREATE TABLE `orders` (
-  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
   `user_id` int(11) DEFAULT NULL,
-  `status` enum('pending','processing','completed','cancelled') NOT NULL DEFAULT 'pending',
+  `order_type` enum('delivery','pickup','dine-in') NOT NULL DEFAULT 'delivery',
+  `status` enum('pending','confirmed','preparing','out for delivery','delivered','ready for pickup','completed','cancelled') NOT NULL DEFAULT 'pending',
   `total_amount` decimal(10,2) NOT NULL,
-  `payment_method` varchar(50) DEFAULT NULL,
+  `payment_method` varchar(50) NOT NULL DEFAULT 'cash',
   `payment_status` enum('pending','paid','failed') NOT NULL DEFAULT 'pending',
   `delivery_address` text DEFAULT NULL,
-  `delivery_time` datetime DEFAULT NULL,
-  `special_instructions` text DEFAULT NULL,
+  `delivery_fee` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `tax_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `notes` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `completed_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -114,12 +117,12 @@ CREATE TABLE `orders` (
 --
 
 CREATE TABLE `order_items` (
-  `id` int(11) NOT NULL,
+  `order_item_id` int(11) NOT NULL,
   `order_id` int(11) NOT NULL,
   `item_id` int(11) NOT NULL,
   `quantity` int(11) NOT NULL,
-  `unit_price` decimal(10,2) NOT NULL,
-  `special_requests` text DEFAULT NULL,
+  `price_per_unit` decimal(10,2) NOT NULL,
+  `special_instructions` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -153,7 +156,10 @@ INSERT INTO `reservations` (`id`, `date`, `time`, `name`, `email`, `phone`, `gue
 (2, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'confirmed', NULL, '2025-05-04 09:58:16', '2025-05-04 10:25:36'),
 (3, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'pending', NULL, '2025-05-04 09:59:17', '2025-05-04 09:59:17'),
 (4, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'pending', NULL, '2025-05-04 10:00:35', '2025-05-04 10:00:35'),
-(5, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'pending', NULL, '2025-05-04 10:01:16', '2025-05-04 10:01:16');
+(5, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'pending', NULL, '2025-05-04 10:01:16', '2025-05-04 10:01:16'),
+(6, '2025-05-06', '15:00:00', 'Karim', 'karim@gmail.com', '+96181193427', 5, NULL, 'pending', NULL, '2025-05-04 17:52:31', '2025-05-04 17:52:31'),
+(7, '2025-05-07', '16:00:00', 'Mhamad Alwan', 'test@gmail.com', '+96171567290', 5, NULL, 'confirmed', NULL, '2025-05-04 18:35:03', '2025-05-04 18:37:07'),
+(8, '2025-05-20', '15:00:00', 'raed helwe', 'markazhelwe@gmail.com', '+96171567290', 2, NULL, 'confirmed', NULL, '2025-05-20 11:14:15', '2025-05-20 11:24:40');
 
 -- --------------------------------------------------------
 
@@ -169,6 +175,29 @@ CREATE TABLE `reviews` (
   `is_published` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `roles`
+--
+
+CREATE TABLE `roles` (
+  `role_id` int(11) NOT NULL,
+  `role_name` enum('customer','staff','manager','admin') NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `roles`
+--
+
+INSERT INTO `roles` (`role_id`, `role_name`, `created_at`, `updated_at`) VALUES
+(1, 'customer', '2025-05-20 12:15:26', '2025-05-20 12:15:26'),
+(2, 'staff', '2025-05-20 12:15:26', '2025-05-20 12:15:26'),
+(3, 'manager', '2025-05-20 12:15:26', '2025-05-20 12:15:26'),
+(4, 'admin', '2025-05-20 12:15:26', '2025-05-20 12:15:26');
 
 -- --------------------------------------------------------
 
@@ -189,8 +218,8 @@ CREATE TABLE `settings` (
 --
 
 INSERT INTO `settings` (`id`, `name`, `value`, `created_at`, `updated_at`) VALUES
-(1, 'restaurant_name', 'Savoria', '2025-05-04 08:52:31', '2025-05-04 09:05:52'),
-(2, 'address', '123 Main Street, Cityville', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
+(1, 'restaurant_name', 'Soveria', '2025-05-04 08:52:31', '2025-05-04 18:37:57'),
+(2, 'address', 'Tripoli', '2025-05-04 08:52:31', '2025-05-04 18:38:09'),
 (3, 'phone', '(123) 456-7890', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
 (4, 'email', 'contact@savoria.com', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
 (5, 'opening_hours', '{\"monday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"tuesday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"wednesday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"thursday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"friday\":{\"open\":\"11:00\",\"close\":\"23:00\",\"closed\":false},\"saturday\":{\"open\":\"10:00\",\"close\":\"23:00\",\"closed\":false},\"sunday\":{\"open\":\"10:00\",\"close\":\"22:00\",\"closed\":true}}', '2025-05-04 08:52:31', '2025-05-04 08:53:07'),
@@ -198,7 +227,9 @@ INSERT INTO `settings` (`id`, `name`, `value`, `created_at`, `updated_at`) VALUE
 (7, 'reservation_max_days', '30', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
 (8, 'reservation_min_hours', '2', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
 (9, 'reservation_time_slot', '30', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
-(10, 'reservation_duration', '90', '2025-05-04 08:52:31', '2025-05-04 08:52:31');
+(10, 'reservation_duration', '90', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
+(11, 'delivery_fee', '5.00', '2025-05-20 12:15:26', '2025-05-20 12:15:26'),
+(12, 'tax_rate', '8.5', '2025-05-20 12:15:26', '2025-05-20 12:15:26');
 
 -- --------------------------------------------------------
 
@@ -244,6 +275,7 @@ CREATE TABLE `users` (
   `phone` varchar(20) DEFAULT NULL,
   `address` text DEFAULT NULL,
   `role` enum('customer','staff','manager','admin') NOT NULL DEFAULT 'customer',
+  `role_id` int(11) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -252,10 +284,10 @@ CREATE TABLE `users` (
 -- Dumping data for table `users`
 --
 
-INSERT INTO `users` (`id`, `username`, `email`, `password`, `first_name`, `last_name`, `phone`, `address`, `role`, `created_at`, `updated_at`) VALUES
-(1, 'admin', 'admin@savoria.com', '$2y$10$cNK7bG7ZcKif5gwk9LMwQ.gNr.9QyXjZBbYbrguwjI/WDcWP1Ctd6', 'Admin', 'User', NULL, NULL, 'admin', '2025-05-03 14:35:10', '2025-05-03 21:24:11'),
-(2, 'RoyHelwe', 'raedhelwe@hotmail.com', '$2y$10$cNK7bG7ZcKif5gwk9LMwQ.gNr.9QyXjZBbYbrguwjI/WDcWP1Ctd6', 'Roy', 'Helwe', '+96171567290', 'Tripoli', 'staff', '2025-05-03 14:45:36', '2025-05-04 08:41:29'),
-(3, 'raedhelwe', 'markazhelwe@gmail.com', '$2y$10$Owt7AJBvv3bCcfwYuforrOv61DNKZmPnrtPbgPlawGg9ntctHo26O', 'raed', 'helwe', '71567290', 'test', 'customer', '2025-05-04 10:27:06', '2025-05-04 10:27:06');
+INSERT INTO `users` (`id`, `username`, `email`, `password`, `first_name`, `last_name`, `phone`, `address`, `role`, `role_id`, `created_at`, `updated_at`) VALUES
+(1, 'admin', 'admin@savoria.com', '$2y$10$cNK7bG7ZcKif5gwk9LMwQ.gNr.9QyXjZBbYbrguwjI/WDcWP1Ctd6', 'Admin', 'User', NULL, NULL, 'admin', 4, '2025-05-03 14:35:10', '2025-05-20 12:15:26'),
+(2, 'RoyHelwe', 'raedhelwe@hotmail.com', '$2y$10$cNK7bG7ZcKif5gwk9LMwQ.gNr.9QyXjZBbYbrguwjI/WDcWP1Ctd6', 'Roy', 'Helwe', '+96171567290', 'Tripoli', 'staff', 2, '2025-05-03 14:45:36', '2025-05-20 12:15:26'),
+(3, 'raedhelwe', 'markazhelwe@gmail.com', '$2y$10$Owt7AJBvv3bCcfwYuforrOv61DNKZmPnrtPbgPlawGg9ntctHo26O', 'raed', 'helwe', '71567290', 'test', 'customer', 1, '2025-05-04 10:27:06', '2025-05-20 12:15:26');
 
 --
 -- Indexes for dumped tables
@@ -271,21 +303,21 @@ ALTER TABLE `categories`
 -- Indexes for table `menu_items`
 --
 ALTER TABLE `menu_items`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `category_id` (`category_id`);
+  ADD PRIMARY KEY (`item_id`),
+  ADD KEY `menu_items_ibfk_1` (`category_id`);
 
 --
 -- Indexes for table `orders`
 --
 ALTER TABLE `orders`
-  ADD PRIMARY KEY (`id`),
+  ADD PRIMARY KEY (`order_id`),
   ADD KEY `user_id` (`user_id`);
 
 --
 -- Indexes for table `order_items`
 --
 ALTER TABLE `order_items`
-  ADD PRIMARY KEY (`id`),
+  ADD PRIMARY KEY (`order_item_id`),
   ADD KEY `order_id` (`order_id`),
   ADD KEY `item_id` (`item_id`);
 
@@ -302,6 +334,13 @@ ALTER TABLE `reservations`
 ALTER TABLE `reviews`
   ADD PRIMARY KEY (`id`),
   ADD KEY `user_id` (`user_id`);
+
+--
+-- Indexes for table `roles`
+--
+ALTER TABLE `roles`
+  ADD PRIMARY KEY (`role_id`),
+  ADD UNIQUE KEY `role_name` (`role_name`);
 
 --
 -- Indexes for table `settings`
@@ -323,7 +362,8 @@ ALTER TABLE `tables`
 ALTER TABLE `users`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `username` (`username`),
-  ADD UNIQUE KEY `email` (`email`);
+  ADD UNIQUE KEY `email` (`email`),
+  ADD KEY `users_ibfk_1` (`role_id`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -339,25 +379,25 @@ ALTER TABLE `categories`
 -- AUTO_INCREMENT for table `menu_items`
 --
 ALTER TABLE `menu_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `order_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `order_items`
 --
 ALTER TABLE `order_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `order_item_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `reservations`
 --
 ALTER TABLE `reservations`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `reviews`
@@ -366,10 +406,16 @@ ALTER TABLE `reviews`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `roles`
+--
+ALTER TABLE `roles`
+  MODIFY `role_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+
+--
 -- AUTO_INCREMENT for table `settings`
 --
 ALTER TABLE `settings`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
 
 --
 -- AUTO_INCREMENT for table `tables`
@@ -403,8 +449,8 @@ ALTER TABLE `orders`
 -- Constraints for table `order_items`
 --
 ALTER TABLE `order_items`
-  ADD CONSTRAINT `order_items_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `order_items_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `menu_items` (`id`) ON DELETE CASCADE;
+  ADD CONSTRAINT `order_items_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `order_items_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `menu_items` (`item_id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `reservations`
@@ -417,6 +463,12 @@ ALTER TABLE `reservations`
 --
 ALTER TABLE `reviews`
   ADD CONSTRAINT `reviews_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `users`
+--
+ALTER TABLE `users`
+  ADD CONSTRAINT `users_ibfk_1` FOREIGN KEY (`role_id`) REFERENCES `roles` (`role_id`) ON DELETE SET NULL;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

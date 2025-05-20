@@ -78,6 +78,9 @@ if (!in_array($timeframe, ['week', 'month', 'year'])) {
 $reservationData = [];
 $reservationStatusData = [];
 
+// Current date for calculations
+$currentDate = date('Y-m-d');
+
 // Query for reservations by date
 switch ($timeframe) {
     case 'week':
@@ -87,7 +90,7 @@ switch ($timeframe) {
                     r.date as reservation_date,
                     COUNT(*) as reservation_count
                   FROM reservations r
-                  WHERE r.date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                  WHERE r.date >= DATE_SUB('$currentDate', INTERVAL 7 DAY)
                   GROUP BY r.date, DATE_FORMAT(r.date, '%a')
                   ORDER BY r.date ASC";
         break;
@@ -99,8 +102,8 @@ switch ($timeframe) {
                     r.date as reservation_date,
                     COUNT(*) as reservation_count
                   FROM reservations r
-                  WHERE MONTH(r.date) = MONTH(CURDATE())
-                  AND YEAR(r.date) = YEAR(CURDATE())
+                  WHERE MONTH(r.date) = MONTH('$currentDate')
+                  AND YEAR(r.date) = YEAR('$currentDate')
                   GROUP BY r.date
                   ORDER BY r.date ASC";
         break;
@@ -112,7 +115,7 @@ switch ($timeframe) {
                     CONCAT(YEAR(r.date), '-', MONTH(r.date)) as month_year,
                     COUNT(*) as reservation_count
                   FROM reservations r
-                  WHERE r.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                  WHERE r.date >= DATE_SUB('$currentDate', INTERVAL 12 MONTH)
                   GROUP BY month_year, DATE_FORMAT(r.date, '%b')
                   ORDER BY month_year ASC";
         break;
@@ -139,7 +142,44 @@ try {
         }
     }
     
-    // Query for reservations by status
+    // If no data was found for the selected timeframe, create empty date slots
+    if (empty($reservationData)) {
+        switch ($timeframe) {
+            case 'week':
+                $start = strtotime('-6 days');
+                for ($i = 0; $i < 7; $i++) {
+                    $date = date('Y-m-d', strtotime("+$i days", $start));
+                    $dayLabel = date('D', strtotime("+$i days", $start));
+                    $reservationData[] = [
+                        'label' => $dayLabel,
+                        'count' => 0
+                    ];
+                }
+                break;
+                
+            case 'month':
+                $daysInMonth = date('t');
+                for ($i = 1; $i <= $daysInMonth; $i++) {
+                    $reservationData[] = [
+                        'label' => (string)$i,
+                        'count' => 0
+                    ];
+                }
+                break;
+                
+            case 'year':
+                $monthsLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                foreach ($monthsLabels as $month) {
+                    $reservationData[] = [
+                        'label' => $month,
+                        'count' => 0
+                    ];
+                }
+                break;
+        }
+    }
+    
+    // Query for reservations by status - get real data regardless of timeframe
     $statusQuery = "SELECT 
                     status,
                     COUNT(*) as status_count
@@ -164,44 +204,38 @@ try {
             ];
         }
     }
-} catch (Exception $e) {
-    // Log error and let it fallback to mock data
-    error_log("Database query error: " . $e->getMessage());
-    $reservationData = [];
-    $reservationStatusData = [];
-}
-
-// If no data is found, return mock data
-if (empty($reservationData)) {
-    // For demo purposes only - in a real app, you might just return an empty array
-    $mockDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     
-    if ($timeframe === 'month') {
-        $mockDays = range(1, date('t')); // Range from 1 to number of days in current month
-    } else if ($timeframe === 'year') {
-        $mockDays = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    // If no status data was found, initialize with zero counts
+    if (empty($reservationStatusData)) {
+        $statuses = ['Confirmed', 'Pending', 'Cancelled'];
+        foreach ($statuses as $status) {
+            $reservationStatusData[] = [
+                'status' => $status,
+                'count' => 0
+            ];
+        }
     }
     
-    foreach ($mockDays as $day) {
-        $reservationData[] = [
-            'label' => (string)$day,
-            'count' => mt_rand(5, 35) // Random count between 5 and 35
-        ];
-    }
-}
-
-if (empty($reservationStatusData)) {
-    $reservationStatusData = [
-        ['status' => 'Confirmed', 'count' => 78],
-        ['status' => 'Cancelled', 'count' => 12],
-        ['status' => 'Completed', 'count' => 65]
+    // Return data with a note if it's empty
+    $response = [
+        'success' => true,
+        'timeframe' => $timeframe,
+        'reservationData' => $reservationData,
+        'statusData' => $reservationStatusData
     ];
+    
+    // Add a note if original data was empty
+    if (empty($dateResult) || $dateResult->num_rows === 0) {
+        $response['note'] = 'No reservation data found for the specified timeframe. Showing empty template.';
+    }
+    
+    echo json_encode($response);
+    
+} catch (Exception $e) {
+    // Log error and return error response
+    error_log("Database query error: " . $e->getMessage());
+    echo json_encode([
+        'success' => false,
+        'error' => 'Database error occurred: ' . $e->getMessage()
+    ]);
 }
-
-// Return the reservation data
-echo json_encode([
-    'success' => true,
-    'timeframe' => $timeframe,
-    'reservationData' => $reservationData,
-    'statusData' => $reservationStatusData
-]); 

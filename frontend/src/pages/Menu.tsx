@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import MenuCard, { MenuItem, CartItem } from '../components/MenuCard';
+import { Link } from 'react-router-dom';
+import MenuCard, { MenuItem } from '../components/MenuCard';
 import { getMenu, getCategories, Category } from '../services/menuService';
 
 const Menu = () => {
@@ -7,7 +8,6 @@ const Menu = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategory, setActiveCategory] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [cart, setCart] = useState<CartItem[]>([]);
 
   useEffect(() => {
     const fetchMenu = async () => {
@@ -41,23 +41,7 @@ const Menu = () => {
     fetchMenu();
   }, []);
 
-  const handleAddToCart = (item: CartItem) => {
-    setCart(prevCart => {
-      // Check if item already exists in cart
-      const existingItemIndex = prevCart.findIndex(cartItem => cartItem.item_id === item.item_id);
-      
-      if (existingItemIndex >= 0) {
-        // Update quantity of existing item
-        const updatedCart = [...prevCart];
-        updatedCart[existingItemIndex].quantity += item.quantity;
-        return updatedCart;
-      } else {
-        // Add new item to cart
-        return [...prevCart, item];
-      }
-    });
-  };
-
+  // Filter items by active category
   const filteredItems = activeCategory 
     ? menuItems.filter(item => item.category_id === activeCategory)
     : menuItems;
@@ -101,14 +85,55 @@ const Menu = () => {
       {/* Menu grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredItems.map(item => (
-          <MenuCard
-            key={item.item_id}
-            {...item}
-            onAddToCart={handleAddToCart}
-          />
+          <div key={item.item_id} className="bg-white rounded-lg shadow-md overflow-hidden">
+            {item.image_url && (
+              <div className="h-48 w-full overflow-hidden">
+                <img 
+                  src={item.image_url} 
+                  alt={item.name} 
+                  className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                />
+              </div>
+            )}
+            <div className="p-4">
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="text-lg font-bold">{item.name}</h3>
+                <span className="font-bold text-amber-600">${item.price.toFixed(2)}</span>
+              </div>
+              <p className="text-gray-600 text-sm mb-3">{item.description}</p>
+              
+              {/* Dietary icons */}
+              <div className="flex space-x-2 mb-4">
+                {item.is_vegetarian && (
+                  <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">Vegetarian</span>
+                )}
+                {item.is_vegan && (
+                  <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">Vegan</span>
+                )}
+                {item.is_gluten_free && (
+                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">Gluten-Free</span>
+                )}
+                {item.contains_nuts && (
+                  <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">Contains Nuts</span>
+                )}
+                {item.spice_level > 0 && (
+                  <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">
+                    Spicy {Array(item.spice_level).fill('🌶️').join('')}
+                  </span>
+                )}
+              </div>
+              
+              <Link 
+                to="/order-online" 
+                className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2 px-4 rounded-md text-center block transition"
+              >
+                Order Online
+              </Link>
+            </div>
+          </div>
         ))}
       </div>
-      
+              
       {/* Empty state */}
       {filteredItems.length === 0 && (
         <div className="text-center py-12">
@@ -116,27 +141,19 @@ const Menu = () => {
         </div>
       )}
       
-      {/* Cart summary (floating) */}
-      {cart.length > 0 && (
-        <div className="fixed bottom-6 right-6 bg-white rounded-lg shadow-lg p-4 z-50 border border-gray-200">
-          <div className="flex items-center">
-            <div className="mr-4">
-              <span className="bg-amber-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
-                {cart.reduce((total, item) => total + item.quantity, 0)}
-              </span>
-            </div>
-            <div>
-              <p className="font-semibold">Your Cart</p>
-              <p className="text-amber-600 font-bold">
-                ${cart.reduce((total, item) => total + (item.price * item.quantity), 0).toFixed(2)}
-              </p>
-            </div>
-            <button className="ml-4 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-md text-sm">
-              Checkout
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Call-to-action section */}
+      <div className="mt-16 bg-amber-50 p-8 rounded-lg text-center">
+        <h2 className="text-2xl font-bold mb-3">Ready to enjoy our food at home?</h2>
+        <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
+          You can order our delicious dishes for delivery or pickup. Fast, fresh, and convenient!
+        </p>
+        <Link
+          to="/order-online"
+          className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-md inline-block font-medium transition"
+        >
+          Order Online Now
+        </Link>
+      </div>
     </div>
   );
 };

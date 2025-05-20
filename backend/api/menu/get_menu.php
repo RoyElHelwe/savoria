@@ -32,46 +32,59 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 // Include database connection
 require_once '../../config/database.php';
 
+// Create DB connection
+$db = new Database();
+$conn = $db->getConnection();
+
 // Get query parameters
 $categoryId = isset($_GET['category_id']) ? (int)$_GET['category_id'] : null;
 $featuredOnly = isset($_GET['featured']) && $_GET['featured'] === 'true';
 
 // Build the query
-$query = "SELECT m.*, c.name as category_name 
+$query = "SELECT m.item_id, m.name, m.description, m.price, m.image_url, 
+          m.category_id, m.is_vegetarian, m.is_vegan, m.is_gluten_free, 
+          m.contains_nuts, m.spice_level, m.is_featured, c.name as category_name 
           FROM menu_items m
           JOIN categories c ON m.category_id = c.id
           WHERE m.is_active = 1";
-$params = [];
-$types = '';
 
 // Add category filter if specified
 if ($categoryId) {
     $query .= " AND m.category_id = ?";
-    $params[] = $categoryId;
-    $types .= 'i';
-}
-
-// Add featured filter if specified
-if ($featuredOnly) {
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("i", $categoryId);
+} else if ($featuredOnly) {
+    // Add featured filter if specified
     $query .= " AND m.is_featured = 1";
+    $stmt = $conn->prepare($query);
+} else {
+    // No additional parameters
+    $stmt = $conn->prepare($query);
 }
 
 // Add ordering
 $query .= " ORDER BY c.display_order, m.name";
 
 // Execute the query
-$result = executeQuery($query, $params, $types);
+if ($stmt === false) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'error' => 'Failed to prepare database query: ' . $conn->error]);
+    exit;
+}
 
-if ($result === null) {
-    http_response_code(500); // Internal Server Error
-    echo json_encode(['error' => 'Database error']);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result === false) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'error' => 'Database query failed: ' . $stmt->error]);
     exit;
 }
 
 // Group items by category for a cleaner response
 $menuByCategory = [];
 
-foreach ($result as $item) {
+while ($item = $result->fetch_assoc()) {
     $categoryId = $item['category_id'];
     $categoryName = $item['category_name'];
     
@@ -84,9 +97,9 @@ foreach ($result as $item) {
         ];
     }
     
-    // Add item to the category
+    // Add item to the category with correct field names
     $menuByCategory[$categoryId]['items'][] = [
-        'item_id' => (int)$item['id'],
+        'item_id' => (int)$item['item_id'],
         'name' => $item['name'],
         'description' => $item['description'],
         'price' => (float)$item['price'],
@@ -108,4 +121,4 @@ http_response_code(200);
 echo json_encode([
     'success' => true,
     'menu' => $response
-]); 
+]);

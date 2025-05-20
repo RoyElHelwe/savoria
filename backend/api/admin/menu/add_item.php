@@ -81,6 +81,7 @@ $data['contains_nuts'] = isset($data['contains_nuts']) ? (bool)$data['contains_n
 $data['spice_level'] = isset($data['spice_level']) ? (int)$data['spice_level'] : 0;
 $data['is_available'] = isset($data['is_available']) ? (bool)$data['is_available'] : true;
 $data['is_featured'] = isset($data['is_featured']) ? (bool)$data['is_featured'] : false;
+$data['image_url'] = isset($data['image_url']) ? $data['image_url'] : null;
 
 // Convert booleans to integers for database
 $isVegetarian = $data['is_vegetarian'] ? 1 : 0;
@@ -93,6 +94,12 @@ $isFeatured = $data['is_featured'] ? 1 : 0;
 // Check if the category exists
 $categoryQuery = "SELECT id FROM categories WHERE id = ?";
 $categoryStmt = $conn->prepare($categoryQuery);
+
+if ($categoryStmt === false) {
+    header("HTTP/1.1 500 Internal Server Error");
+    exit(json_encode(['success' => false, 'error' => 'Database error: ' . $conn->error]));
+}
+
 $categoryStmt->bind_param("i", $data['category_id']);
 $categoryStmt->execute();
 $categoryResult = $categoryStmt->get_result();
@@ -102,11 +109,18 @@ if ($categoryResult->num_rows === 0) {
     exit(json_encode(['success' => false, 'error' => 'Invalid category ID']));
 }
 
-// Insert the menu item
-$query = "INSERT INTO menu_items (name, description, price, image_url, category_id, is_vegetarian, is_vegan, is_gluten_free, contains_nuts, spice_level, is_featured, is_active) 
+// Insert the menu item - use column names exactly as they appear in the database
+$query = "INSERT INTO menu_items (name, description, price, image_url, category_id, is_vegetarian, is_vegan, 
+          is_gluten_free, contains_nuts, spice_level, is_featured, is_active) 
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 $stmt = $conn->prepare($query);
+
+if ($stmt === false) {
+    header("HTTP/1.1 500 Internal Server Error");
+    exit(json_encode(['success' => false, 'error' => 'Database error: ' . $conn->error]));
+}
+
 $stmt->bind_param(
     "ssdsiiiiiiii",
     $data['name'],
@@ -126,9 +140,15 @@ $stmt->bind_param(
 if ($stmt->execute()) {
     $itemId = $conn->insert_id;
     
-    // Get the newly created item to return
-    $newItemQuery = "SELECT * FROM menu_items WHERE id = ?";
+    // Get the newly created item to return - using item_id instead of id based on database schema
+    $newItemQuery = "SELECT * FROM menu_items WHERE item_id = ?";
     $newItemStmt = $conn->prepare($newItemQuery);
+    
+    if ($newItemStmt === false) {
+        header("HTTP/1.1 500 Internal Server Error");
+        exit(json_encode(['success' => false, 'error' => 'Database error fetching new item: ' . $conn->error]));
+    }
+    
     $newItemStmt->bind_param("i", $itemId);
     $newItemStmt->execute();
     $newItemResult = $newItemStmt->get_result();
@@ -136,7 +156,7 @@ if ($stmt->execute()) {
     
     // Format the response data
     $responseData = [
-        'id' => (int)$newItem['id'],
+        'id' => (int)$newItem['item_id'],
         'name' => $newItem['name'],
         'description' => $newItem['description'],
         'price' => (float)$newItem['price'],
@@ -154,5 +174,5 @@ if ($stmt->execute()) {
     echo json_encode(['success' => true, 'data' => $responseData, 'message' => 'Menu item added successfully']);
 } else {
     header("HTTP/1.1 500 Internal Server Error");
-    echo json_encode(['success' => false, 'error' => 'Failed to add menu item: ' . $conn->error]);
-} 
+    echo json_encode(['success' => false, 'error' => 'Failed to add menu item: ' . $stmt->error]);
+}

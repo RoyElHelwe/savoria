@@ -21,11 +21,8 @@
 ### 3. Manager
 - All staff permissions
 - Edit menu items (add, update, delete)
-- Manage inventory and supplies
 - View analytics and detailed reports
 - Handle customer feedback
-- Approve staff schedules
-- Moderate customer reviews
 
 ### 4. Admin
 - Full system access
@@ -33,7 +30,6 @@
 - System configuration
 - Access all reports and analytics
 - Manage restaurant settings (hours, location, etc.)
-- Database backup and maintenance
 
 ## Core Features
 
@@ -59,16 +55,14 @@
 - Cart functionality
 - Delivery address management
 - Payment integration
-- Order tracking
 
 ### Admin Dashboard
 - User management interface
 - Sales and reservation reports
-- Inventory tracking
 - Customer feedback monitoring
 
 ## Tech Stack
-- Frontend: React Vite, TailwindCSS, shadcn/ui components
+- Frontend: React Vite, TailwindCSS
 - Backend: PHP
 - Database: MySQL (via XAMPP)
 - Authentication: JWT-based authentication system 

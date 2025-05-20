@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import MenuCard, { MenuItem, CartItem } from '../components/MenuCard';
 import { getMenu, getCategories, Category } from '../services/menuService';
+import { 
+  placeOrder, 
+  getCartFromLocalStorage, 
+  saveCartToLocalStorage, 
+  clearCart
+} from '../services/orderService';
 import { useAuth } from '../contexts/AuthContext';
 
 interface OrderFormData {
@@ -10,10 +16,12 @@ interface OrderFormData {
   phone: string;
   address: string;
   delivery_instructions: string;
-  payment_method: 'cash' | 'card';
+  payment_method: 'cash' | 'credit_card';
+  order_type: 'delivery' | 'pickup';
 }
 
 const OrderOnline = () => {
+  const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -22,6 +30,8 @@ const OrderOnline = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showCheckout, setShowCheckout] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const [placingOrder, setPlacingOrder] = useState(false);
+  const [orderId, setOrderId] = useState<number | null>(null);
   
   // Form data state
   const [formData, setFormData] = useState<OrderFormData>({
@@ -30,10 +40,30 @@ const OrderOnline = () => {
     phone: user?.phone || '',
     address: user?.address || '',
     delivery_instructions: '',
-    payment_method: 'card'
+    payment_method: 'credit_card',
+    order_type: 'delivery'
   });
   
   const [formError, setFormError] = useState('');
+
+  // Load cart from localStorage on component mount
+  useEffect(() => {
+    const savedCart = getCartFromLocalStorage();
+    if (savedCart && savedCart.length > 0) {
+      setCart(savedCart);
+    }
+    
+    // Update form data when user changes
+    if (user) {
+      setFormData(prev => ({
+        ...prev,
+        name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+        email: user.email || '',
+        phone: user.phone || '',
+        address: user.address || ''
+      }));
+    }
+  }, [user]);
 
   useEffect(() => {
     const fetchMenu = async () => {
@@ -72,32 +102,46 @@ const OrderOnline = () => {
       // Check if item already exists in cart
       const existingItemIndex = prevCart.findIndex(cartItem => cartItem.item_id === item.item_id);
       
+      let updatedCart;
       if (existingItemIndex >= 0) {
         // Update quantity of existing item
-        const updatedCart = [...prevCart];
+        updatedCart = [...prevCart];
         updatedCart[existingItemIndex].quantity += item.quantity;
-        return updatedCart;
       } else {
         // Add new item to cart
-        return [...prevCart, item];
+        updatedCart = [...prevCart, item];
       }
+      
+      // Save to localStorage
+      saveCartToLocalStorage(updatedCart);
+      
+      // Show toast notification
+      
+      return updatedCart;
     });
   };
   
   const handleRemoveFromCart = (itemId: number) => {
-    setCart(prevCart => prevCart.filter(item => item.item_id !== itemId));
+    setCart(prevCart => {
+      const updatedCart = prevCart.filter(item => item.item_id !== itemId);
+      saveCartToLocalStorage(updatedCart);
+      return updatedCart;
+    });
   };
   
   const updateItemQuantity = (itemId: number, newQuantity: number) => {
     if (newQuantity < 1) return;
     
-    setCart(prevCart => 
-      prevCart.map(item => 
+    setCart(prevCart => {
+      const updatedCart = prevCart.map(item => 
         item.item_id === itemId 
           ? { ...item, quantity: newQuantity } 
           : item
-      )
-    );
+      );
+      
+      saveCartToLocalStorage(updatedCart);
+      return updatedCart;
+    });
   };
   
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -109,17 +153,21 @@ const OrderOnline = () => {
   };
   
   const handleCheckout = () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0) {
+      return;
+    }
     setShowCheckout(true);
   };
   
-  const handlePlaceOrder = (e: React.FormEvent) => {
+  const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
+    setPlacingOrder(true);
     
     // Basic validation
     if (!formData.name || !formData.email || !formData.phone || !formData.address) {
       setFormError('Please fill in all required fields');
+      setPlacingOrder(false);
       return;
     }
     
@@ -127,6 +175,7 @@ const OrderOnline = () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
       setFormError('Please enter a valid email address');
+      setPlacingOrder(false);
       return;
     }
     
@@ -134,15 +183,46 @@ const OrderOnline = () => {
     const phoneRegex = /^\+?[0-9\s\-()]{8,}$/;
     if (!phoneRegex.test(formData.phone)) {
       setFormError('Please enter a valid phone number');
+      setPlacingOrder(false);
       return;
     }
     
-    // Mock API call for placing order
-    setTimeout(() => {
-      setOrderSuccess(true);
-      // Clear cart after successful order
-      setCart([]);
-    }, 1500);
+    try {
+      // Prepare order data
+      const orderData = {
+        items: cart,
+        customer_info: {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          address: formData.address,
+          delivery_instructions: formData.delivery_instructions
+        },
+        order_type: formData.order_type,
+        payment_method: formData.payment_method
+      };
+      
+      // Place order
+      const response = await placeOrder(orderData);
+      
+      if (response.success) {
+        // Order successful
+        setOrderSuccess(true);
+        setOrderId(response.order_id || null);
+        
+        // Clear cart
+        clearCart();
+        setCart([]);
+      } else {
+        // Order failed
+        setFormError(response.error || 'Failed to place order. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error placing order:', error);
+      setFormError('An error occurred while placing your order. Please try again later.');
+    } finally {
+      setPlacingOrder(false);
+    }
   };
   
   const calculateTotal = () => {
@@ -154,24 +234,7 @@ const OrderOnline = () => {
     ? menuItems.filter(item => item.category_id === activeCategory)
     : menuItems;
 
-  if (orderSuccess) {
-    return (
-      <div className="container mx-auto px-4 py-16">
-        <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-8 text-center">
-          <svg className="mx-auto h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          <h2 className="text-2xl font-bold mt-4 mb-2">Order Placed Successfully!</h2>
-          <p className="text-gray-600 mb-6">
-            Thank you for your order. We've sent a confirmation to your email with all the details.
-          </p>
-          <Link to="/" className="bg-amber-500 hover:bg-amber-600 text-white font-medium px-6 py-3 rounded-md inline-block transition">
-            Return to Home
-          </Link>
-        </div>
-      </div>
-    );
-  }
+    if (orderSuccess) {    return (      <div className="container mx-auto px-4 py-16">        <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-8 text-center">          <svg className="mx-auto h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />          </svg>          <h2 className="text-2xl font-bold mt-4 mb-2">Order Placed Successfully!</h2>          <p className="text-gray-600 mb-2">            Thank you for your order. We've sent a confirmation to your email with all the details.          </p>          {orderId && (            <p className="font-medium mb-6">              Your order number: <span className="text-amber-600">#{orderId}</span>            </p>          )}          <div className="flex flex-col sm:flex-row justify-center gap-4">            <Link               to="/"               className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium px-6 py-3 rounded-md inline-block transition"            >              Return to Home            </Link>            {orderId && (              <Link                 to={`/order-tracking/${orderId}`}                 className="bg-amber-500 hover:bg-amber-600 text-white font-medium px-6 py-3 rounded-md inline-block transition"              >                Track Your Order              </Link>            )}            {isAuthenticated && (              <Link                 to="/account/orders"                 className="bg-amber-500 hover:bg-amber-600 text-white font-medium px-6 py-3 rounded-md inline-block transition"              >                View My Orders              </Link>            )}          </div>        </div>      </div>    );  }
 
   if (isLoading) {
     return (
@@ -279,34 +342,55 @@ const OrderOnline = () => {
               </div>
               
               <div className="mb-4">
-                <label htmlFor="address" className="block text-gray-700 text-sm font-medium mb-1">
-                  Delivery Address*
+                <label htmlFor="order_type" className="block text-gray-700 text-sm font-medium mb-1">
+                  Order Type*
                 </label>
-                <input
-                  id="address"
-                  name="address"
-                  type="text"
-                  value={formData.address}
+                <select
+                  id="order_type"
+                  name="order_type"
+                  value={formData.order_type}
                   onChange={handleFormChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
                   required
-                />
+                >
+                  <option value="delivery">Delivery</option>
+                  <option value="pickup">Pickup</option>
+                </select>
               </div>
               
-              <div className="mb-4">
-                <label htmlFor="delivery_instructions" className="block text-gray-700 text-sm font-medium mb-1">
-                  Delivery Instructions
-                </label>
-                <textarea
-                  id="delivery_instructions"
-                  name="delivery_instructions"
-                  value={formData.delivery_instructions}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  rows={2}
-                  placeholder="E.g., Apartment number, gate code, etc."
-                />
-              </div>
+              {formData.order_type === 'delivery' && (
+                <>
+                  <div className="mb-4">
+                    <label htmlFor="address" className="block text-gray-700 text-sm font-medium mb-1">
+                      Delivery Address*
+                    </label>
+                    <input
+                      id="address"
+                      name="address"
+                      type="text"
+                      value={formData.address}
+                      onChange={handleFormChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="mb-4">
+                    <label htmlFor="delivery_instructions" className="block text-gray-700 text-sm font-medium mb-1">
+                      Delivery Instructions
+                    </label>
+                    <textarea
+                      id="delivery_instructions"
+                      name="delivery_instructions"
+                      value={formData.delivery_instructions}
+                      onChange={handleFormChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      rows={2}
+                      placeholder="E.g., Apartment number, gate code, etc."
+                    />
+                  </div>
+                </>
+              )}
               
               <div className="mb-6">
                 <label className="block text-gray-700 text-sm font-medium mb-1">
@@ -317,8 +401,8 @@ const OrderOnline = () => {
                     <input
                       type="radio"
                       name="payment_method"
-                      value="card"
-                      checked={formData.payment_method === 'card'}
+                      value="credit_card"
+                      checked={formData.payment_method === 'credit_card'}
                       onChange={handleFormChange}
                       className="mr-2"
                     />
@@ -340,9 +424,20 @@ const OrderOnline = () => {
               
               <button 
                 type="submit" 
-                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-md transition"
+                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-md transition disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={placingOrder}
               >
-                Place Order
+                {placingOrder ? (
+                  <span className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Processing...
+                  </span>
+                ) : (
+                  'Place Order'
+                )}
               </button>
             </form>
           </div>

@@ -55,6 +55,7 @@ export interface AuthContextType {
   logout: () => Promise<void>;
   hasRole: (requiredRoles: UserRole | UserRole[]) => boolean;
   updateProfile: (profileData: ProfileUpdateData) => Promise<AuthResponse>;
+  updateUser: (userData: Partial<User>) => void;
 }
 
 export interface AuthProviderProps {
@@ -214,6 +215,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
   };
 
+  // Update user state directly (for use after profile updates)
+  const updateUser = (userData: Partial<User>): void => {
+    if (!user) return;
+    
+    // Create updated user object
+    const updatedUser = { ...user, ...userData };
+    
+    // Update local state
+    setUser(updatedUser);
+    
+    // Update localStorage
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
   // Update user profile
   const updateProfile = async (profileData: ProfileUpdateData): Promise<AuthResponse> => {
     setLoading(true);
@@ -253,7 +268,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     register,
     logout,
     hasRole,
-    updateProfile
+    updateProfile,
+    updateUser
   };
 
   return (

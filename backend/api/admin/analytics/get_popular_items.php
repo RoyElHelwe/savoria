@@ -78,31 +78,32 @@ if (!in_array($timeframe, ['week', 'month', 'year'])) {
 
 // Set the time range based on timeframe
 $dateRangeSQL = "";
+$currentDate = date('Y-m-d');
 switch ($timeframe) {
     case 'week':
-        $dateRangeSQL = "AND o.order_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+        $dateRangeSQL = "AND DATE(o.created_at) >= DATE_SUB('$currentDate', INTERVAL 7 DAY)";
         break;
     case 'month':
-        $dateRangeSQL = "AND o.order_date >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)";
+        $dateRangeSQL = "AND DATE(o.created_at) >= DATE_SUB('$currentDate', INTERVAL 1 MONTH)";
         break;
     case 'year':
-        $dateRangeSQL = "AND o.order_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)";
+        $dateRangeSQL = "AND DATE(o.created_at) >= DATE_SUB('$currentDate', INTERVAL 12 MONTH)";
         break;
 }
 
-// Query to get popular menu items
+// Query to get popular menu items - modified to match your database schema
 $query = "SELECT 
-            mi.id,
-            mi.name,
-            COUNT(oi.id) as order_count,
+            m.item_id,
+            m.name,
+            COUNT(oi.item_id) as order_count,
             SUM(oi.quantity) as total_quantity,
-            SUM(oi.quantity * oi.unit_price) as total_revenue
+            SUM(oi.quantity * oi.price_per_unit) as total_revenue
           FROM order_items oi
-          JOIN menu_items mi ON oi.item_id = mi.id
-          JOIN orders o ON oi.order_id = o.id
+          JOIN menu_items m ON oi.item_id = m.item_id
+          JOIN orders o ON oi.order_id = o.order_id
           WHERE o.status != 'cancelled'
           $dateRangeSQL
-          GROUP BY mi.id, mi.name
+          GROUP BY m.item_id, m.name
           ORDER BY total_quantity DESC
           LIMIT ?";
 
@@ -121,40 +122,115 @@ try {
     
     $popularItems = [];
 
-    if ($result) {
+    if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
             $popularItems[] = [
-                'id' => (int)$row['id'],
+                'id' => (int)$row['item_id'],
                 'name' => $row['name'],
                 'orders' => (int)$row['total_quantity'],
                 'revenue' => (float)$row['total_revenue']
             ];
         }
+        
+        // Return the popular items data
+        echo json_encode([
+            'success' => true,
+            'timeframe' => $timeframe,
+            'data' => $popularItems
+        ]);
+    } else {
+        // If no data is found in the specified timeframe, try getting overall popular items without timeframe restriction
+        $fallbackQuery = "SELECT 
+                            m.item_id,
+                            m.name,
+                            COUNT(oi.item_id) as order_count,
+                            SUM(oi.quantity) as total_quantity,
+                            SUM(oi.quantity * oi.price_per_unit) as total_revenue
+                        FROM order_items oi
+                        JOIN menu_items m ON oi.item_id = m.item_id
+                        JOIN orders o ON oi.order_id = o.order_id
+                        WHERE o.status != 'cancelled'
+                        GROUP BY m.item_id, m.name
+                        ORDER BY total_quantity DESC
+                        LIMIT ?";
+        
+        $fallbackStmt = $conn->prepare($fallbackQuery);
+        
+        if ($fallbackStmt === false) {
+            throw new Exception("Error preparing fallback query: " . $conn->error);
+        }
+        
+        $fallbackStmt->bind_param("i", $limit);
+        $fallbackStmt->execute();
+        $fallbackResult = $fallbackStmt->get_result();
+        
+        $popularItems = [];
+        
+        if ($fallbackResult && $fallbackResult->num_rows > 0) {
+            while ($row = $fallbackResult->fetch_assoc()) {
+                $popularItems[] = [
+                    'id' => (int)$row['item_id'],
+                    'name' => $row['name'],
+                    'orders' => (int)$row['total_quantity'],
+                    'revenue' => (float)$row['total_revenue']
+                ];
+            }
+            
+            // Return the popular items data with a note that it's all-time data
+            echo json_encode([
+                'success' => true,
+                'timeframe' => 'all_time', // Indicate this is all-time data
+                'note' => 'No data found for the specified timeframe. Showing all-time popular items instead.',
+                'data' => $popularItems
+            ]);
+        } else {
+            // If still no data, return the most recent menu items as a fallback
+            $menuItemsQuery = "SELECT 
+                                item_id,
+                                name,
+                                price
+                            FROM menu_items
+                            WHERE is_active = 1
+                            ORDER BY item_id DESC
+                            LIMIT ?";
+            
+            $menuItemsStmt = $conn->prepare($menuItemsQuery);
+            
+            if ($menuItemsStmt === false) {
+                throw new Exception("Error preparing menu items query: " . $conn->error);
+            }
+            
+            $menuItemsStmt->bind_param("i", $limit);
+            $menuItemsStmt->execute();
+            $menuItemsResult = $menuItemsStmt->get_result();
+            
+            $menuItems = [];
+            
+            if ($menuItemsResult) {
+                while ($row = $menuItemsResult->fetch_assoc()) {
+                    $menuItems[] = [
+                        'id' => (int)$row['item_id'],
+                        'name' => $row['name'],
+                        'orders' => 0,
+                        'revenue' => 0
+                    ];
+                }
+            }
+            
+            // Return menu items with a note that no order data was found
+            echo json_encode([
+                'success' => true,
+                'timeframe' => $timeframe,
+                'note' => 'No order data found. Showing available menu items instead.',
+                'data' => $menuItems
+            ]);
+        }
     }
 } catch (Exception $e) {
-    // Log error and ensure popularItems is empty to trigger mock data generation
+    // Log error and return error response
     error_log("Database query error: " . $e->getMessage());
-    $popularItems = [];
+    echo json_encode([
+        'success' => false,
+        'error' => 'Database error occurred: ' . $e->getMessage()
+    ]);
 }
-
-// If no data is found, return mock data
-if (empty($popularItems)) {
-    // For demo purposes only - in a real app, you might just return an empty array
-    $mockItems = [
-        ['id' => 1, 'name' => 'Margherita Pizza', 'orders' => 145, 'revenue' => 2175],
-        ['id' => 2, 'name' => 'Beef Burger', 'orders' => 120, 'revenue' => 1440],
-        ['id' => 3, 'name' => 'Caesar Salad', 'orders' => 90, 'revenue' => 990],
-        ['id' => 4, 'name' => 'Spaghetti Carbonara', 'orders' => 85, 'revenue' => 1275],
-        ['id' => 5, 'name' => 'Grilled Salmon', 'orders' => 78, 'revenue' => 1560]
-    ];
-    
-    // Only return the requested number of items
-    $popularItems = array_slice($mockItems, 0, $limit);
-}
-
-// Return the popular items data
-echo json_encode([
-    'success' => true,
-    'timeframe' => $timeframe,
-    'data' => $popularItems
-]); 

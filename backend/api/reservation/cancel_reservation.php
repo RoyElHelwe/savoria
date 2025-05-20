@@ -32,17 +32,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 require_once '../../config/database.php';
 require_once '../../config/jwt_utils.php';
 
-// Get the JWT from the Authorization header
-$headers = getallheaders();
-$authHeader = isset($headers['Authorization']) ? $headers['Authorization'] : '';
+// Create database connection
+$db = new Database();
+$conn = $db->getConnection();
 
-if (empty($authHeader) || !preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
+// Get the JWT from the Authorization header
+$jwt = getJWTFromHeader();
+
+if (!$jwt) {
     http_response_code(401); // Unauthorized
     echo json_encode(['success' => false, 'error' => 'Authentication required']);
     exit;
 }
-
-$jwt = $matches[1];
 
 // Validate the JWT
 $payload = validateJWT($jwt);
@@ -54,11 +55,11 @@ if (!$payload) {
 }
 
 // Get user ID from the JWT payload
-$userId = isset($payload->user_id) ? $payload->user_id : null;
+$userId = isset($payload['user_id']) ? $payload['user_id'] : null;
 
 if (!$userId) {
     http_response_code(401); // Unauthorized
-    echo json_encode(['success' => false, 'error' => 'Invalid token']);
+    echo json_encode(['success' => false, 'error' => 'Invalid token payload']);
     exit;
 }
 
@@ -76,33 +77,55 @@ $reservationId = (int)$data['reservation_id'];
 
 // Check if the reservation exists and belongs to the user
 $query = "SELECT * FROM reservations WHERE id = ?";
-$params = [$reservationId];
-$types = 'i';
-$result = executeQuery($query, $params, $types);
+$stmt = $conn->prepare($query);
 
-if (!$result || count($result) === 0) {
+if ($stmt === false) {
+    http_response_code(500); // Internal Server Error
+    echo json_encode(['success' => false, 'error' => 'Database error: ' . $conn->error]);
+    exit;
+}
+
+$stmt->bind_param('i', $reservationId);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result->num_rows === 0) {
     http_response_code(404); // Not Found
     echo json_encode(['success' => false, 'error' => 'Reservation not found']);
     exit;
 }
 
-$reservation = $result[0];
+$reservation = $result->fetch_assoc();
 
 // Check if the user owns the reservation or is an admin
 $isAdmin = false;
 $userRoleQuery = "SELECT role FROM users WHERE id = ?";
-$userRoleParams = [$userId];
-$userRoleTypes = 'i';
-$userRoleResult = executeQuery($userRoleQuery, $userRoleParams, $userRoleTypes);
+$userRoleStmt = $conn->prepare($userRoleQuery);
 
-if ($userRoleResult && count($userRoleResult) > 0) {
-    $isAdmin = $userRoleResult[0]['role'] === 'admin' || $userRoleResult[0]['role'] === 'manager';
+if ($userRoleStmt === false) {
+    http_response_code(500); // Internal Server Error
+    echo json_encode(['success' => false, 'error' => 'Database error: ' . $conn->error]);
+    exit;
 }
 
-if (!$isAdmin && $reservation['user_id'] != $userId) {
-    http_response_code(403); // Forbidden
-    echo json_encode(['success' => false, 'error' => 'You do not have permission to cancel this reservation']);
-    exit;
+$userRoleStmt->bind_param('i', $userId);
+$userRoleStmt->execute();
+$userRoleResult = $userRoleStmt->get_result();
+
+if ($userRoleResult->num_rows > 0) {
+    $userRole = $userRoleResult->fetch_assoc();
+    $isAdmin = $userRole['role'] === 'admin' || $userRole['role'] === 'manager';
+}
+
+// Check if user has permission to cancel this reservation
+if (!$isAdmin && ($reservation['user_id'] === null || $reservation['user_id'] != $userId)) {
+    // Check if the email matches for non-logged-in reservations
+    $email = isset($payload['email']) ? $payload['email'] : '';
+    if (empty($email) || $email !== $reservation['email']) {
+        http_response_code(403); // Forbidden
+        echo json_encode(['success' => false, 'error' => 'You do not have permission to cancel this reservation']);
+        exit;
+    }
 }
 
 // Check if the reservation can be cancelled (not already cancelled)
@@ -113,30 +136,47 @@ if ($reservation['status'] === 'cancelled') {
 }
 
 // Update the reservation status to cancelled
-$query = "UPDATE reservations SET status = 'cancelled', updated_at = NOW() WHERE id = ?";
-$params = [$reservationId];
-$types = 'i';
-$result = executeQuery($query, $params, $types);
+$updateQuery = "UPDATE reservations SET status = 'cancelled', updated_at = NOW() WHERE id = ?";
+$updateStmt = $conn->prepare($updateQuery);
 
-if ($result === false) {
+if ($updateStmt === false) {
     http_response_code(500); // Internal Server Error
-    echo json_encode(['success' => false, 'error' => 'Failed to cancel reservation']);
+    echo json_encode(['success' => false, 'error' => 'Database error: ' . $conn->error]);
+    exit;
+}
+
+$updateStmt->bind_param('i', $reservationId);
+$success = $updateStmt->execute();
+
+if (!$success) {
+    http_response_code(500); // Internal Server Error
+    echo json_encode(['success' => false, 'error' => 'Failed to cancel reservation: ' . $updateStmt->error]);
     exit;
 }
 
 // Get the updated reservation
-$query = "SELECT * FROM reservations WHERE id = ?";
-$params = [$reservationId];
-$types = 'i';
-$result = executeQuery($query, $params, $types);
+$getUpdatedQuery = "SELECT * FROM reservations WHERE id = ?";
+$getUpdatedStmt = $conn->prepare($getUpdatedQuery);
 
-if (!$result || count($result) === 0) {
+if ($getUpdatedStmt === false) {
+    http_response_code(500); // Internal Server Error
+    echo json_encode(['success' => false, 'error' => 'Database error: ' . $conn->error]);
+    exit;
+}
+
+$getUpdatedStmt->bind_param('i', $reservationId);
+$getUpdatedStmt->execute();
+$updatedResult = $getUpdatedStmt->get_result();
+
+if ($updatedResult->num_rows === 0) {
     http_response_code(500); // Internal Server Error
     echo json_encode(['success' => false, 'error' => 'Failed to retrieve updated reservation']);
     exit;
 }
 
-$reservation = $result[0];
+$reservation = $updatedResult->fetch_assoc();
+
+// Convert numeric fields to proper types
 $reservation['id'] = (int)$reservation['id'];
 $reservation['guests'] = (int)$reservation['guests'];
 if ($reservation['user_id'] !== null) {
@@ -147,5 +187,6 @@ if ($reservation['user_id'] !== null) {
 http_response_code(200);
 echo json_encode([
     'success' => true,
+    'message' => 'Reservation cancelled successfully',
     'reservation' => $reservation
-]); 
+]);

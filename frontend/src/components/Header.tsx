@@ -16,6 +16,7 @@ import {
   Menu, X, User, ShoppingCart, Phone, MapPin, 
   Instagram, Facebook, Twitter, Mail, Calendar, LogOut
 } from 'lucide-react';
+import { countCartItems } from '@/services/orderService';
 
 interface NavItem {
   label: string;
@@ -54,25 +55,36 @@ const Header = () => {
 
   // Menu items based on authentication state and user role
   const getNavItems = (): NavItem[] => {
-    const items: NavItem[] = [
+    const baseItems: NavItem[] = [
       { label: 'Home', path: '/' },
       { label: 'Menu', path: '/menu' },
-      { label: 'Reservations', path: '/reservations' },
-      { label: 'Order Online', path: '/order-online' },
-      { label: 'About', path: '/about' },
-      { label: 'Contact', path: '/contact' },
     ];
-
-    // Add admin/staff links if user has appropriate role
-    if (isAuthenticated && user && ['admin', 'manager', 'staff'].includes(user.role)) {
-      items.push({ 
-        label: 'Dashboard', 
-        path: '/admin',
-        icon: <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-      });
+    
+    const customItems: NavItem[] = [];
+    
+    if (!isAuthenticated) {
+      // For non-logged in users
+      customItems.push(
+        { label: 'About', path: '/about' },
+        { label: 'Contact', path: '/contact' }
+      );
+    } else if (user && user.role === 'customer') {
+      // For logged in customers
+      customItems.push(
+        { label: 'Book a Table', path: '/reservations' },
+        { label: 'Order Online', path: '/order-online' },
+        { label: 'About', path: '/about' },
+        { label: 'Contact', path: '/contact' }
+      );
+    } else if (user && (user.role === 'staff' || user.role === 'admin' || user.role === 'manager')) {
+      // For staff and admin
+      customItems.push(
+        { label: 'About', path: '/about' },
+        { label: 'Contact', path: '/contact' }
+      );
     }
-
-    return items;
+    
+    return [...baseItems, ...customItems];
   };
 
   // Animation variants
@@ -143,6 +155,41 @@ const Header = () => {
       return true;
     }
     return location.pathname.startsWith(path) && path !== '/';
+  };
+
+  // Helper functions to check user roles
+  const isAdmin = (): boolean => {
+    return isAuthenticated && user && (user.role === 'admin' || user.role === 'manager') || false;
+  };
+
+  const isStaff = (): boolean => {
+    return isAuthenticated && user && (user.role === 'staff') || false;
+  };
+
+  const isCustomer = (): boolean => {
+    return isAuthenticated && user && (user.role === 'customer') || false;
+  };
+
+  // Render cart button if user is customer or not logged in
+  const renderCartButton = () => {
+    if (!isAuthenticated || isCustomer()) {
+      return (
+        <Button 
+          variant="outline" 
+          size="icon" 
+          className="ml-1 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-600 relative" 
+          asChild
+        >
+          <Link to="/order-online" aria-label="View Cart">
+            <ShoppingCart className="h-5 w-5" />
+            <span className="absolute -top-1 -right-1 h-5 w-5 bg-amber-600 text-white text-xs rounded-full flex items-center justify-center">
+              {countCartItems()}
+            </span>
+          </Link>
+        </Button>
+      );
+    }
+    return null;
   };
 
   return (
@@ -269,13 +316,9 @@ const Header = () => {
             <div className="hidden md:flex items-center space-x-2">
               {isAuthenticated ? (
                 <div className="flex items-center">
-                  <Link 
-                    to="/reservations" 
-                    className="flex items-center mr-3 text-sm text-gray-700 hover:text-amber-600 font-medium"
-                  >
-                    <Calendar className="h-4 w-4 mr-1.5" />
-                    <span>Book a Table</span>
-                  </Link>
+                  {/* Only show for customers */}
+                  {isCustomer() && renderCartButton()}
+                  
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="relative h-10 rounded-full hover:bg-amber-50 border border-gray-200">
@@ -292,20 +335,34 @@ const Header = () => {
                     <DropdownMenuContent align="end" className="w-56">
                       <DropdownMenuLabel>My Account</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem asChild>
-                        <Link to="/profile" className="cursor-pointer">Profile</Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link to="/orders" className="cursor-pointer">My Orders</Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link to="/reservations/my" className="cursor-pointer">My Reservations</Link>
-                      </DropdownMenuItem>
-                      {user && ['admin', 'manager', 'staff'].includes(user.role) && (
-                        <DropdownMenuItem asChild>
-                          <Link to="/admin" className="cursor-pointer">Admin Dashboard</Link>
-                        </DropdownMenuItem>
+                      
+                      {/* Customer-specific menu items */}
+                      {isCustomer() && (
+                        <>
+                          <DropdownMenuItem asChild>
+                            <Link to="/profile" className="cursor-pointer">Profile</Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <Link to="/orders" className="cursor-pointer">My Orders</Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <Link to="/reservations/my" className="cursor-pointer">My Reservations</Link>
+                          </DropdownMenuItem>
+                        </>
                       )}
+                      
+                      {/* Staff/Admin menu items */}
+                      {(isStaff() || isAdmin()) && (
+                        <>
+                          <DropdownMenuItem asChild>
+                            <Link to={isAdmin() ? "/admin" : "/staff"} className="cursor-pointer">Dashboard</Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <Link to="/profile" className="cursor-pointer">Profile</Link>
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={logout} className="cursor-pointer text-red-600 hover:text-red-700 hover:bg-red-50">
                         <LogOut className="h-4 w-4 mr-2" />
@@ -316,13 +373,8 @@ const Header = () => {
                 </div>
               ) : (
                 <>
-                  <Link 
-                    to="/reservations" 
-                    className="flex items-center mr-1 text-sm text-gray-700 hover:text-amber-600 font-medium"
-                  >
-                    <Calendar className="h-4 w-4 mr-1.5" />
-                    <span>Reservations</span>
-                  </Link>
+                  {/* For non-logged in users */}
+                  {renderCartButton()}
                   <Button variant="ghost" className="hover:bg-amber-50 hover:text-amber-600 text-sm" asChild>
                     <Link to="/login">Login</Link>
                   </Button>
@@ -331,33 +383,27 @@ const Header = () => {
                   </Button>
                 </>
               )}
-              
-              <Button 
-                variant="outline" 
-                size="icon" 
-                className="ml-1 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-600 relative" 
-                asChild
-              >
-                <Link to="/order-online" aria-label="View Cart">
-                  <ShoppingCart className="h-5 w-5" />
-                  <span className="absolute -top-1 -right-1 h-5 w-5 bg-amber-600 text-white text-xs rounded-full flex items-center justify-center">3</span>
-                </Link>
-              </Button>
             </div>
 
             {/* Mobile Menu Button */}
             <div className="flex items-center md:hidden space-x-3">
-              <Button 
-                variant="outline" 
-                size="icon" 
-                className="hover:bg-amber-50 hover:text-amber-600 hover:border-amber-600 relative" 
-                asChild
-              >
-                <Link to="/order-online" aria-label="View Cart">
-                  <ShoppingCart className="h-5 w-5" />
-                  <span className="absolute -top-1 -right-1 h-5 w-5 bg-amber-600 text-white text-xs rounded-full flex items-center justify-center">3</span>
-                </Link>
-              </Button>
+              {/* Only show cart for customers or non-logged in users */}
+              {(!isAuthenticated || isCustomer()) && (
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className="hover:bg-amber-50 hover:text-amber-600 hover:border-amber-600 relative" 
+                  asChild
+                >
+                  <Link to="/order-online" aria-label="View Cart">
+                    <ShoppingCart className="h-5 w-5" />
+                    <span className="absolute -top-1 -right-1 h-5 w-5 bg-amber-600 text-white text-xs rounded-full flex items-center justify-center">
+                      {countCartItems()}
+                    </span>
+                  </Link>
+                </Button>
+              )}
+              
               <Button
                 variant="ghost"
                 size="icon"
@@ -450,15 +496,33 @@ const Header = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <Link to="/profile" className="block px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-md text-center text-sm">
-                      Profile
-                    </Link>
-                    <Link to="/orders" className="block px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-md text-center text-sm">
-                      My Orders
-                    </Link>
-                    <Link to="/reservations/my" className="block px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-md text-center text-sm">
-                      My Reservations
-                    </Link>
+                    {/* Customer-specific menu items */}
+                    {isCustomer() && (
+                      <>
+                        <Link to="/profile" className="block px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-md text-center text-sm">
+                          Profile
+                        </Link>
+                        <Link to="/orders" className="block px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-md text-center text-sm">
+                          My Orders
+                        </Link>
+                        <Link to="/reservations/my" className="block px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-md text-center text-sm">
+                          My Reservations
+                        </Link>
+                      </>
+                    )}
+                    
+                    {/* Staff/Admin menu items */}
+                    {(isStaff() || isAdmin()) && (
+                      <>
+                        <Link to={isAdmin() ? "/admin" : "/staff"} className="block px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-md text-center text-sm">
+                          Dashboard
+                        </Link>
+                        <Link to="/profile" className="block px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-md text-center text-sm">
+                          Profile
+                        </Link>
+                      </>
+                    )}
+                    
                     <button
                       onClick={logout}
                       className="block w-full px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md text-center text-sm"

@@ -5,7 +5,7 @@
 
 // JWT Secret Key (change this in production and keep it secure)
 define('JWT_SECRET', 'savoria_jwt_secret_key');
-define('JWT_EXPIRY', 3600); // 1 hour in seconds
+define('JWT_EXPIRY', 30 * 24 * 60 * 60); // 30 days in seconds (1 month)
 
 /**
  * Generate a JWT token
@@ -184,4 +184,4 @@ function hasRole($requiredRoles, $userData) {
     }
     
     return false;
-} 
+}

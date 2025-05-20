@@ -72,9 +72,15 @@ if (!isset($data['id'])) {
 
 $itemId = (int)$data['id'];
 
-// Check if the menu item exists
-$checkItemQuery = "SELECT id FROM menu_items WHERE id = ?";
+// Check if the menu item exists - using item_id instead of id based on the database structure
+$checkItemQuery = "SELECT item_id FROM menu_items WHERE item_id = ?";
 $checkItemStmt = $conn->prepare($checkItemQuery);
+
+if ($checkItemStmt === false) {
+    header("HTTP/1.1 500 Internal Server Error");
+    exit(json_encode(['success' => false, 'error' => 'Database error: ' . $conn->error]));
+}
+
 $checkItemStmt->bind_param("i", $itemId);
 $checkItemStmt->execute();
 $checkItemResult = $checkItemStmt->get_result();
@@ -118,6 +124,12 @@ if (isset($data['category_id'])) {
     // Check if the category exists
     $categoryQuery = "SELECT id FROM categories WHERE id = ?";
     $categoryStmt = $conn->prepare($categoryQuery);
+    
+    if ($categoryStmt === false) {
+        header("HTTP/1.1 500 Internal Server Error");
+        exit(json_encode(['success' => false, 'error' => 'Database error: ' . $conn->error]));
+    }
+    
     $categoryStmt->bind_param("i", $data['category_id']);
     $categoryStmt->execute();
     $categoryResult = $categoryStmt->get_result();
@@ -180,8 +192,8 @@ if (empty($updateFields)) {
     exit();
 }
 
-// Build the query
-$query = "UPDATE menu_items SET " . implode(", ", $updateFields) . " WHERE id = ?";
+// Build the query - using item_id instead of id
+$query = "UPDATE menu_items SET " . implode(", ", $updateFields) . " WHERE item_id = ?";
 
 // Add the itemId to the parameters
 $paramTypes .= "i";
@@ -190,19 +202,30 @@ $paramValues[] = $itemId;
 // Prepare and execute the query
 $stmt = $conn->prepare($query);
 
-// Create reference array for binding parameters
-$bindParams = [$stmt, $paramTypes];
-foreach ($paramValues as $key => $value) {
-    $bindParams[] = &$paramValues[$key];
+if ($stmt === false) {
+    header("HTTP/1.1 500 Internal Server Error");
+    exit(json_encode(['success' => false, 'error' => 'Database error: ' . $conn->error]));
 }
 
-// Use call_user_func_array to bind the parameters dynamically
-call_user_func_array('mysqli_stmt_bind_param', $bindParams);
+// Create reference array for binding parameters
+$bindParams = [$paramTypes];
+foreach ($paramValues as &$value) {
+    $bindParams[] = &$value;
+}
+
+// Call bind_param with references to the parameters
+call_user_func_array([$stmt, 'bind_param'], $bindParams);
 
 if ($stmt->execute()) {
-    // Get the updated item to return
-    $updatedItemQuery = "SELECT * FROM menu_items WHERE id = ?";
+    // Get the updated item to return - using item_id instead of id
+    $updatedItemQuery = "SELECT * FROM menu_items WHERE item_id = ?";
     $updatedItemStmt = $conn->prepare($updatedItemQuery);
+    
+    if ($updatedItemStmt === false) {
+        header("HTTP/1.1 500 Internal Server Error");
+        exit(json_encode(['success' => false, 'error' => 'Database error fetching updated item: ' . $conn->error]));
+    }
+    
     $updatedItemStmt->bind_param("i", $itemId);
     $updatedItemStmt->execute();
     $updatedItemResult = $updatedItemStmt->get_result();
@@ -210,7 +233,7 @@ if ($stmt->execute()) {
     
     // Format the response data
     $responseData = [
-        'id' => (int)$updatedItem['id'],
+        'id' => (int)$updatedItem['item_id'],
         'name' => $updatedItem['name'],
         'description' => $updatedItem['description'],
         'price' => (float)$updatedItem['price'],
@@ -228,5 +251,5 @@ if ($stmt->execute()) {
     echo json_encode(['success' => true, 'data' => $responseData, 'message' => 'Menu item updated successfully']);
 } else {
     header("HTTP/1.1 500 Internal Server Error");
-    echo json_encode(['success' => false, 'error' => 'Failed to update menu item: ' . $conn->error]);
-} 
+    echo json_encode(['success' => false, 'error' => 'Failed to update menu item: ' . $stmt->error]);
+}

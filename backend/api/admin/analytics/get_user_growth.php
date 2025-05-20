@@ -76,6 +76,8 @@ if (!in_array($timeframe, ['week', 'month', 'year'])) {
 
 // Get user growth data based on timeframe
 $query = "";
+$userGrowth = [];
+$userRoles = [];
 
 switch ($timeframe) {
     case 'week':
@@ -112,7 +114,7 @@ switch ($timeframe) {
                   FROM users
                   WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
                   GROUP BY month_year, DATE_FORMAT(created_at, '%b')
-                  ORDER BY month_year ASC";
+                  ORDER BY STR_TO_DATE(CONCAT('2000-', MONTH(created_at), '-01'), '%Y-%m-%d') ASC";
         break;
 }
 
@@ -125,37 +127,54 @@ try {
         throw new Exception("Error preparing user growth query: " . $conn->error);
     }
     
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    if ($result) {
-        while ($row = $result->fetch_assoc()) {
-            $userGrowth[] = [
-                'label' => $row['label'],
-                'users' => (int)$row['user_count']
-            ];
+    if ($stmt->execute()) {
+        $result = $stmt->get_result();
+        
+        if ($result) {
+            $userGrowth = [];
+            while ($row = $result->fetch_assoc()) {
+                $userGrowth[] = [
+                    'label' => $row['label'],
+                    'users' => (int)$row['user_count']
+                ];
+            }
         }
-    }
-    
-    // Also get statistics on user roles
-    $rolesQuery = "SELECT role, COUNT(*) as role_count FROM users GROUP BY role";
-    $rolesStmt = $conn->prepare($rolesQuery);
-    
-    if ($rolesStmt === false) {
-        // Handle query preparation error
-        throw new Exception("Error preparing user roles query: " . $conn->error);
-    }
-    
-    $rolesStmt->execute();
-    $rolesResult = $rolesStmt->get_result();
-    
-    if ($rolesResult) {
-        while ($row = $rolesResult->fetch_assoc()) {
-            $userRoles[] = [
-                'role' => ucfirst($row['role']),  // Capitalize first letter
-                'count' => (int)$row['role_count']
-            ];
+        
+        // Get statistics on user roles from the database
+        $rolesQuery = "SELECT 
+                       r.role_name as role, 
+                       COUNT(u.id) as role_count 
+                     FROM 
+                       roles r
+                     LEFT JOIN 
+                       users u ON r.role_id = u.role_id
+                     GROUP BY 
+                       r.role_id, r.role_name
+                     ORDER BY 
+                       r.role_id";
+
+        $rolesStmt = $conn->prepare($rolesQuery);
+        
+        if ($rolesStmt === false) {
+            // Handle query preparation error
+            throw new Exception("Error preparing user roles query: " . $conn->error);
         }
+        
+        if ($rolesStmt->execute()) {
+            $rolesResult = $rolesStmt->get_result();
+            
+            if ($rolesResult) {
+                $userRoles = [];
+                while ($row = $rolesResult->fetch_assoc()) {
+                    $userRoles[] = [
+                        'role' => ucfirst($row['role']),  // Capitalize first letter
+                        'count' => (int)$row['role_count']
+                    ];
+                }
+            }
+        }
+    } else {
+        throw new Exception("Error executing query: " . $stmt->error);
     }
 } catch (Exception $e) {
     // Log error and ensure arrays are empty to trigger mock data generation
@@ -164,40 +183,83 @@ try {
     $userRoles = [];
 }
 
-// If no data is found, return mock data
+// If no data is found, fill in zeros for dates with no registrations
 if (empty($userGrowth)) {
-    // For demo purposes only - in a real app, you might just return an empty array
     switch ($timeframe) {
         case 'week':
-            $mockLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            $dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            $startDate = new DateTime(date('Y-m-d', strtotime('-6 days')));
+            $endDate = new DateTime(date('Y-m-d'));
+            $days = [];
+            
+            // Create array of all days in the last week
+            while ($startDate <= $endDate) {
+                $dayOfWeek = $startDate->format('D');
+                $days[$dayOfWeek] = 0;
+                $startDate->modify('+1 day');
+            }
+            
+            // Map day abbreviations to our expected format
+            foreach ($days as $day => $count) {
+                $label = substr($day, 0, 3);
+                $userGrowth[] = [
+                    'label' => $label,
+                    'users' => 0
+                ];
+            }
             break;
+            
         case 'month':
-            $mockLabels = range(1, date('t')); // Range from 1 to number of days in current month
+            $daysInMonth = date('t');
+            for ($i = 1; $i <= $daysInMonth; $i++) {
+                $userGrowth[] = [
+                    'label' => (string)$i,
+                    'users' => 0
+                ];
+            }
             break;
+            
         case 'year':
-        default:
-            $mockLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            $monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            foreach ($monthLabels as $month) {
+                $userGrowth[] = [
+                    'label' => $month,
+                    'users' => 0
+                ];
+            }
             break;
-    }
-    
-    // Generate mock data with an upward trend
-    $base = 20;
-    foreach ($mockLabels as $index => $label) {
-        $growth = $base + ($index * 2) + mt_rand(-5, 10);
-        $userGrowth[] = [
-            'label' => (string)$label,
-            'users' => max(1, $growth)  // Ensure at least 1 user
-        ];
     }
 }
 
+// If no role data is found, use roles from the database
 if (empty($userRoles)) {
-    $userRoles = [
-        ['role' => 'Customer', 'count' => 245],
-        ['role' => 'Staff', 'count' => 12],
-        ['role' => 'Manager', 'count' => 5],
-        ['role' => 'Admin', 'count' => 2]
-    ];
+    try {
+        $basicRolesQuery = "SELECT role_name as role FROM roles ORDER BY role_id";
+        $basicRolesStmt = $conn->prepare($basicRolesQuery);
+        
+        if ($basicRolesStmt && $basicRolesStmt->execute()) {
+            $basicRolesResult = $basicRolesStmt->get_result();
+            
+            if ($basicRolesResult) {
+                while ($row = $basicRolesResult->fetch_assoc()) {
+                    $userRoles[] = [
+                        'role' => ucfirst($row['role']),
+                        'count' => 0
+                    ];
+                }
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Error fetching basic roles: " . $e->getMessage());
+        
+        // Fallback to hardcoded roles if query fails
+        $userRoles = [
+            ['role' => 'Customer', 'count' => 0],
+            ['role' => 'Staff', 'count' => 0],
+            ['role' => 'Manager', 'count' => 0],
+            ['role' => 'Admin', 'count' => 0]
+        ];
+    }
 }
 
 // Return the user growth data
@@ -206,4 +268,4 @@ echo json_encode([
     'timeframe' => $timeframe,
     'growth' => $userGrowth,
     'roles' => $userRoles
-]); 
+]);

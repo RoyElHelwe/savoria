@@ -75,7 +75,7 @@ if (!$result || count($result) === 0) {
 
 $userRole = $result[0]['role'];
 
-if ($userRole !== 'admin' && $userRole !== 'manager') {
+if ($userRole !== 'admin' && $userRole !== 'manager' && $userRole !== 'staff') {
     http_response_code(403); // Forbidden
     echo json_encode(['success' => false, 'error' => 'Access denied. Admin privileges required.']);
     exit;
