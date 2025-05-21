@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: May 20, 2025 at 02:37 PM
+-- Generation Time: May 21, 2025 at 12:09 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -76,7 +76,7 @@ CREATE TABLE `menu_items` (
 --
 
 INSERT INTO `menu_items` (`item_id`, `name`, `description`, `price`, `image_url`, `category_id`, `is_vegetarian`, `is_vegan`, `is_gluten_free`, `contains_nuts`, `spice_level`, `is_featured`, `is_active`, `created_at`, `updated_at`) VALUES
-(1, 'Garlic Breadd', 'Freshly baked bread with garlic butter and herbs', 7.00, '/images/garlic-bread.jpg', 1, 1, 0, 0, 0, 0, 1, 1, '2025-05-03 14:36:22', '2025-05-04 08:27:36'),
+(1, 'Garlic Breaddd', 'Freshly baked bread with garlic butter and herbs', 7.00, '/images/menu/menu_682ce7230af5f.jpeg', 1, 1, 0, 0, 0, 0, 1, 1, '2025-05-03 14:36:22', '2025-05-20 20:33:39'),
 (2, 'Mozzarella Sticks', 'Breaded mozzarella sticks served with marinara sauce', 7.99, '/images/mozzarella-sticks.jpg', 1, 1, 0, 0, 0, 0, 1, 1, '2025-05-03 14:36:22', '2025-05-03 14:36:22'),
 (3, 'Spicy Buffalo Wings', 'Crispy chicken wings tossed in our signature buffalo sauce', 10.99, '/images/buffalo-wings.jpg', 1, 0, 0, 1, 0, 3, 1, 1, '2025-05-03 14:36:22', '2025-05-03 14:36:22'),
 (4, 'Classic Cheeseburger', 'Juicy beef patty with cheddar cheese, lettuce, tomato, and our special sauce', 12.99, '/images/cheeseburger.jpg', 2, 0, 0, 0, 0, 0, 1, 1, '2025-05-03 14:36:22', '2025-05-03 14:36:22'),
@@ -85,7 +85,8 @@ INSERT INTO `menu_items` (`item_id`, `name`, `description`, `price`, `image_url`
 (7, 'Chocolate Lava Cake', 'Warm chocolate cake with a molten center, served with vanilla ice cream', 8.99, '/images/chocolate-lava-cake.jpg', 3, 1, 0, 0, 0, 0, 1, 1, '2025-05-03 14:36:22', '2025-05-03 14:36:22'),
 (8, 'New York Cheesecake', 'Creamy cheesecake with a graham cracker crust, topped with berry compote', 7.99, '/images/cheesecake.jpg', 3, 1, 0, 0, 0, 0, 0, 1, '2025-05-03 14:36:22', '2025-05-03 14:36:22'),
 (9, 'Fresh Lemonade', 'Homemade lemonade with fresh lemons and mint', 3.99, '/images/lemonade.jpg', 4, 1, 1, 1, 0, 0, 0, 1, '2025-05-03 14:36:22', '2025-05-03 14:36:22'),
-(10, 'Iced Coffee', 'Cold brewed coffee served over ice with your choice of milk and sweetener', 4.99, '/images/iced-coffee.jpg', 4, 1, 1, 1, 0, 0, 0, 1, '2025-05-03 14:36:22', '2025-05-03 14:36:22');
+(10, 'Iced Coffee', 'Cold brewed coffee served over ice with your choice of milk and sweetener', 4.99, '/images/iced-coffee.jpg', 4, 1, 1, 1, 0, 0, 0, 1, '2025-05-03 14:36:22', '2025-05-03 14:36:22'),
+(12, 'ada', 'das', 234.00, '/images/garlic-bread.jpg', 2, 0, 0, 0, 0, 0, 0, 1, '2025-05-20 20:19:44', '2025-05-20 20:19:44');
 
 -- --------------------------------------------------------
 
@@ -110,6 +111,81 @@ CREATE TABLE `orders` (
   `completed_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+--
+-- Dumping data for table `orders`
+--
+
+INSERT INTO `orders` (`order_id`, `user_id`, `order_type`, `status`, `total_amount`, `payment_method`, `payment_status`, `delivery_address`, `delivery_fee`, `tax_amount`, `notes`, `created_at`, `updated_at`, `completed_at`) VALUES
+(1, 2, 'delivery', 'cancelled', 26.02, 'credit_card', 'pending', 'tripoli', 5.00, 2.04, 'ss', '2025-05-20 12:45:36', '2025-05-20 17:56:21', '2025-05-20 14:33:49'),
+(2, 3, 'delivery', 'pending', 26.02, 'credit_card', 'pending', 'Qalamoun', 5.00, 2.04, 'test', '2025-05-20 20:09:14', '2025-05-20 20:09:14', NULL),
+(3, 3, 'delivery', 'pending', 21.69, 'credit_card', 'pending', 'dxd', 5.00, 1.70, 'dsds', '2025-05-21 09:26:45', '2025-05-21 09:26:45', NULL);
+
+--
+-- Triggers `orders`
+--
+DELIMITER $$
+CREATE TRIGGER `orders_after_insert` AFTER INSERT ON `orders` FOR EACH ROW BEGIN
+    INSERT INTO `order_tracking` (
+        `order_id`, 
+        `event_type`, 
+        `status`, 
+        `details`,
+        `user_id`,
+        `timestamp`
+    ) VALUES (
+        NEW.`order_id`,
+        'order_placed',
+        NEW.`status`,
+        'Order received by the system',
+        NEW.`user_id`,
+        NEW.`created_at`
+    );
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `orders_after_update` AFTER UPDATE ON `orders` FOR EACH ROW BEGIN
+    -- Only add a tracking record if the status has changed
+    IF NEW.`status` <> OLD.`status` THEN
+        INSERT INTO `order_tracking` (
+            `order_id`, 
+            `event_type`, 
+            `status`, 
+            `details`,
+            `user_id`,
+            `timestamp`
+        ) VALUES (
+            NEW.`order_id`,
+            'status_update',
+            NEW.`status`,
+            CONCAT('Order status updated from "', OLD.`status`, '" to "', NEW.`status`, '"'),
+            NULL,
+            NEW.`updated_at`
+        );
+    END IF;
+    
+    -- If order is completed, add a completed tracking record
+    IF NEW.`completed_at` IS NOT NULL AND OLD.`completed_at` IS NULL THEN
+        INSERT INTO `order_tracking` (
+            `order_id`, 
+            `event_type`, 
+            `status`, 
+            `details`,
+            `user_id`,
+            `timestamp`
+        ) VALUES (
+            NEW.`order_id`,
+            'order_completed',
+            NEW.`status`,
+            'Order marked as completed',
+            NULL,
+            NEW.`completed_at`
+        );
+    END IF;
+END
+$$
+DELIMITER ;
+
 -- --------------------------------------------------------
 
 --
@@ -123,6 +199,66 @@ CREATE TABLE `order_items` (
   `quantity` int(11) NOT NULL,
   `price_per_unit` decimal(10,2) NOT NULL,
   `special_instructions` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `order_items`
+--
+
+INSERT INTO `order_items` (`order_item_id`, `order_id`, `item_id`, `quantity`, `price_per_unit`, `special_instructions`, `created_at`) VALUES
+(1, 1, 3, 1, 10.99, NULL, '2025-05-20 12:45:36'),
+(2, 1, 2, 1, 7.99, NULL, '2025-05-20 12:45:36'),
+(3, 2, 2, 1, 7.99, NULL, '2025-05-20 20:09:14'),
+(4, 2, 3, 1, 10.99, NULL, '2025-05-20 20:09:14'),
+(5, 3, 2, 1, 7.99, NULL, '2025-05-21 09:26:45'),
+(6, 3, 1, 1, 7.00, NULL, '2025-05-21 09:26:45');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `order_tracking`
+--
+
+CREATE TABLE `order_tracking` (
+  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `event_type` enum('order_placed','status_update','payment_update','note_added','order_completed') NOT NULL,
+  `status` varchar(50) DEFAULT NULL,
+  `details` text DEFAULT NULL,
+  `user_id` int(11) DEFAULT NULL,
+  `timestamp` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `order_tracking`
+--
+
+INSERT INTO `order_tracking` (`id`, `order_id`, `event_type`, `status`, `details`, `user_id`, `timestamp`) VALUES
+(1, 1, 'status_update', 'preparing', 'Order status updated from \"confirmed\" to \"preparing\"', NULL, '2025-05-20 13:20:33'),
+(2, 1, 'status_update', 'out for delivery', 'Order status updated from \"preparing\" to \"out for delivery\"', NULL, '2025-05-20 13:20:52'),
+(3, 1, 'status_update', 'delivered', 'Order status updated from \"out for delivery\" to \"delivered\"', NULL, '2025-05-20 14:33:49'),
+(4, 1, 'order_completed', 'delivered', 'Order marked as completed', NULL, '2025-05-20 14:33:49'),
+(5, 1, 'status_update', 'out for delivery', 'Order status updated from \"delivered\" to \"out for delivery\"', NULL, '2025-05-20 17:56:03'),
+(6, 1, 'status_update', 'cancelled', 'Order status updated from \"out for delivery\" to \"cancelled\"', NULL, '2025-05-20 17:56:21'),
+(7, 2, 'order_placed', 'pending', 'Order received by the system', 3, '2025-05-20 20:09:14'),
+(8, 3, 'order_placed', 'pending', 'Order received by the system', 3, '2025-05-21 09:26:45');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `payment_transactions`
+--
+
+CREATE TABLE `payment_transactions` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) DEFAULT NULL,
+  `transaction_id` varchar(50) NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `payment_method` enum('credit_card','cash','paypal') NOT NULL,
+  `card_last4` varchar(4) DEFAULT NULL,
+  `status` enum('pending','completed','failed') NOT NULL DEFAULT 'pending',
+  `error_code` varchar(50) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -154,12 +290,12 @@ CREATE TABLE `reservations` (
 INSERT INTO `reservations` (`id`, `date`, `time`, `name`, `email`, `phone`, `guests`, `special_requests`, `status`, `user_id`, `created_at`, `updated_at`) VALUES
 (1, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, 'CANCELLED: Rejected by administrator', 'cancelled', NULL, '2025-05-04 09:55:54', '2025-05-04 10:25:33'),
 (2, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'confirmed', NULL, '2025-05-04 09:58:16', '2025-05-04 10:25:36'),
-(3, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'pending', NULL, '2025-05-04 09:59:17', '2025-05-04 09:59:17'),
-(4, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'pending', NULL, '2025-05-04 10:00:35', '2025-05-04 10:00:35'),
-(5, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'pending', NULL, '2025-05-04 10:01:16', '2025-05-04 10:01:16'),
-(6, '2025-05-06', '15:00:00', 'Karim', 'karim@gmail.com', '+96181193427', 5, NULL, 'pending', NULL, '2025-05-04 17:52:31', '2025-05-04 17:52:31'),
+(3, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'confirmed', NULL, '2025-05-04 09:59:17', '2025-05-20 20:38:28'),
+(4, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'confirmed', NULL, '2025-05-04 10:00:35', '2025-05-21 08:41:58'),
+(5, '2025-05-05', '17:00:00', 'Roy Helwe', 'markazhelwe@gmail.com', '+96171567290', 5, NULL, 'confirmed', NULL, '2025-05-04 10:01:16', '2025-05-21 08:53:18'),
+(6, '2025-05-06', '15:00:00', 'Karim', 'karim@gmail.com', '+96181193427', 5, NULL, 'confirmed', NULL, '2025-05-04 17:52:31', '2025-05-20 20:22:01'),
 (7, '2025-05-07', '16:00:00', 'Mhamad Alwan', 'test@gmail.com', '+96171567290', 5, NULL, 'confirmed', NULL, '2025-05-04 18:35:03', '2025-05-04 18:37:07'),
-(8, '2025-05-20', '15:00:00', 'raed helwe', 'markazhelwe@gmail.com', '+96171567290', 2, NULL, 'confirmed', NULL, '2025-05-20 11:14:15', '2025-05-20 11:24:40');
+(8, '2025-05-20', '15:00:00', 'raed helwe', 'markazhelwe@gmail.com', '+96171567290', 2, NULL, 'cancelled', NULL, '2025-05-20 11:14:15', '2025-05-20 20:23:58');
 
 -- --------------------------------------------------------
 
@@ -222,7 +358,7 @@ INSERT INTO `settings` (`id`, `name`, `value`, `created_at`, `updated_at`) VALUE
 (2, 'address', 'Tripoli', '2025-05-04 08:52:31', '2025-05-04 18:38:09'),
 (3, 'phone', '(123) 456-7890', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
 (4, 'email', 'contact@savoria.com', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
-(5, 'opening_hours', '{\"monday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"tuesday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"wednesday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"thursday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"friday\":{\"open\":\"11:00\",\"close\":\"23:00\",\"closed\":false},\"saturday\":{\"open\":\"10:00\",\"close\":\"23:00\",\"closed\":false},\"sunday\":{\"open\":\"10:00\",\"close\":\"22:00\",\"closed\":true}}', '2025-05-04 08:52:31', '2025-05-04 08:53:07'),
+(5, 'opening_hours', '{\"monday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"tuesday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"wednesday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"thursday\":{\"open\":\"11:00\",\"close\":\"22:00\",\"closed\":false},\"friday\":{\"open\":\"11:00\",\"close\":\"23:00\",\"closed\":false},\"saturday\":{\"open\":\"10:00\",\"close\":\"23:00\",\"closed\":true},\"sunday\":{\"open\":\"10:00\",\"close\":\"22:00\",\"closed\":true}}', '2025-05-04 08:52:31', '2025-05-20 20:24:36'),
 (6, 'social_media', '{\"facebook\":\"https:\\/\\/facebook.com\\/savoria\",\"instagram\":\"https:\\/\\/instagram.com\\/savoria\",\"twitter\":\"https:\\/\\/twitter.com\\/savoria\"}', '2025-05-04 08:52:31', '2025-05-04 08:52:51'),
 (7, 'reservation_max_days', '30', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
 (8, 'reservation_min_hours', '2', '2025-05-04 08:52:31', '2025-05-04 08:52:31'),
@@ -285,8 +421,8 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `username`, `email`, `password`, `first_name`, `last_name`, `phone`, `address`, `role`, `role_id`, `created_at`, `updated_at`) VALUES
-(1, 'admin', 'admin@savoria.com', '$2y$10$cNK7bG7ZcKif5gwk9LMwQ.gNr.9QyXjZBbYbrguwjI/WDcWP1Ctd6', 'Admin', 'User', NULL, NULL, 'admin', 4, '2025-05-03 14:35:10', '2025-05-20 12:15:26'),
-(2, 'RoyHelwe', 'raedhelwe@hotmail.com', '$2y$10$cNK7bG7ZcKif5gwk9LMwQ.gNr.9QyXjZBbYbrguwjI/WDcWP1Ctd6', 'Roy', 'Helwe', '+96171567290', 'Tripoli', 'staff', 2, '2025-05-03 14:45:36', '2025-05-20 12:15:26'),
+(1, 'admin', 'admin@savoria.com', '$2y$10$b7FHNKhjJP8q7UlpWXdFkut9l2pcFtsRgPJGqpdb11qkRUQkRyDoC', 'Admin', 'User', '+96181193427', 'Tripoli', 'admin', 4, '2025-05-03 14:35:10', '2025-05-20 19:42:02'),
+(2, 'RoyHelwe', 'raedhelwe@hotmail.com', '$2y$10$cNK7bG7ZcKif5gwk9LMwQ.gNr.9QyXjZBbYbrguwjI/WDcWP1Ctd6', 'Roy', 'Helwe', '+96171567290', 'Tripoli', 'staff', 2, '2025-05-03 14:45:36', '2025-05-20 20:24:13'),
 (3, 'raedhelwe', 'markazhelwe@gmail.com', '$2y$10$Owt7AJBvv3bCcfwYuforrOv61DNKZmPnrtPbgPlawGg9ntctHo26O', 'raed', 'helwe', '71567290', 'test', 'customer', 1, '2025-05-04 10:27:06', '2025-05-20 12:15:26');
 
 --
@@ -320,6 +456,21 @@ ALTER TABLE `order_items`
   ADD PRIMARY KEY (`order_item_id`),
   ADD KEY `order_id` (`order_id`),
   ADD KEY `item_id` (`item_id`);
+
+--
+-- Indexes for table `order_tracking`
+--
+ALTER TABLE `order_tracking`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `order_id` (`order_id`),
+  ADD KEY `user_id` (`user_id`);
+
+--
+-- Indexes for table `payment_transactions`
+--
+ALTER TABLE `payment_transactions`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `user_id` (`user_id`);
 
 --
 -- Indexes for table `reservations`
@@ -379,19 +530,31 @@ ALTER TABLE `categories`
 -- AUTO_INCREMENT for table `menu_items`
 --
 ALTER TABLE `menu_items`
-  MODIFY `item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
 
 --
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `order_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `order_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `order_items`
 --
 ALTER TABLE `order_items`
-  MODIFY `order_item_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `order_item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+
+--
+-- AUTO_INCREMENT for table `order_tracking`
+--
+ALTER TABLE `order_tracking`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+
+--
+-- AUTO_INCREMENT for table `payment_transactions`
+--
+ALTER TABLE `payment_transactions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `reservations`
@@ -409,13 +572,13 @@ ALTER TABLE `reviews`
 -- AUTO_INCREMENT for table `roles`
 --
 ALTER TABLE `roles`
-  MODIFY `role_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `role_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `settings`
 --
 ALTER TABLE `settings`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
 
 --
 -- AUTO_INCREMENT for table `tables`
@@ -451,6 +614,19 @@ ALTER TABLE `orders`
 ALTER TABLE `order_items`
   ADD CONSTRAINT `order_items_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`) ON DELETE CASCADE,
   ADD CONSTRAINT `order_items_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `menu_items` (`item_id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `order_tracking`
+--
+ALTER TABLE `order_tracking`
+  ADD CONSTRAINT `order_tracking_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `order_tracking_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `payment_transactions`
+--
+ALTER TABLE `payment_transactions`
+  ADD CONSTRAINT `payment_transactions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
 
 --
 -- Constraints for table `reservations`
