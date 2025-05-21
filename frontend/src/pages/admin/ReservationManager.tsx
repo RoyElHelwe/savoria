@@ -5,6 +5,7 @@ import {
   confirmReservation,
   rejectReservation,
 } from "../../services/reservationService";
+import { Loader2 } from "lucide-react";
 
 interface Reservation {
   created_at: string;
@@ -72,14 +73,16 @@ const ReservationManager = () => {
   const applyFilters = (reservationList: Reservation[]) => {
     console.log("Applying filters to reservations:", reservationList.length);
     console.log("Current filters:", filter);
-    
+
     let filtered = [...reservationList];
 
     // Filter by date
     if (filter.date) {
       console.log("Filtering by date:", filter.date);
-      filtered = filtered.filter(reservation => {
-        console.log(`Comparing reservation date: ${reservation.date} with filter date: ${filter.date}`);
+      filtered = filtered.filter((reservation) => {
+        console.log(
+          `Comparing reservation date: ${reservation.date} with filter date: ${filter.date}`
+        );
         return reservation.date === filter.date;
       });
     }
@@ -217,26 +220,26 @@ const ReservationManager = () => {
 
   const formatTime = (timeString: string) => {
     // Convert 24-hour format to 12-hour format
-    const [hours, minutes] = timeString.split(':');
+    const [hours, minutes] = timeString.split(":");
     const hour = parseInt(hours, 10);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const ampm = hour >= 12 ? "PM" : "AM";
     const hour12 = hour % 12 || 12;
     return `${hour12}:${minutes} ${ampm}`;
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric'
+    return new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
     }).format(date);
   };
 
-  // Debug reservation dates 
+  // Debug reservation dates
   const debugReservationDates = () => {
     console.log("All reservations with dates:");
-    reservations.forEach(res => {
+    reservations.forEach((res) => {
       console.log(`ID: ${res.id}, Date: ${res.date}, Status: ${res.status}`);
     });
   };
@@ -286,7 +289,7 @@ const ReservationManager = () => {
         </div>
 
         <div className="flex items-end">
-          <button 
+          <button
             onClick={debugReservationDates}
             className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
           >
@@ -297,12 +300,11 @@ const ReservationManager = () => {
 
       <div className="mb-4">
         <p className="text-gray-600">
-          Total Reservations: {reservations.length} | Filtered: {filteredReservations.length}
+          Total Reservations: {reservations.length} | Filtered:{" "}
+          {filteredReservations.length}
         </p>
         {filter.date && (
-          <p className="text-gray-600 mt-1">
-            Filtering by date: {filter.date}
-          </p>
+          <p className="text-gray-600 mt-1">Filtering by date: {filter.date}</p>
         )}
       </div>
 
@@ -373,40 +375,63 @@ const ReservationManager = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => setSelectedReservation(reservation)}
-                      className="text-indigo-600 hover:text-indigo-900 mr-3"
-                    >
-                      View
-                    </button>
-
+                    {loading ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <button
+                        onClick={() => setSelectedReservation(reservation)}
+                        className="text-indigo-600 hover:text-indigo-900 mr-3"
+                      >
+                        View
+                      </button>
+                    )}
                     {reservation.status === "pending" && (
                       <>
-                        <button
-                          onClick={() => handleConfirmReservation(reservation.id)}
-                          className="text-green-600 hover:text-green-900 mr-3"
-                          disabled={loading}
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() => handleRejectReservation(reservation.id)}
-                          className="text-red-600 hover:text-red-900"
-                          disabled={loading}
-                        >
-                          Reject
-                        </button>
+                        {loading ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          <button
+                            onClick={() =>
+                              handleConfirmReservation(reservation.id)
+                            }
+                            className="text-green-600 hover:text-green-900 mr-3"
+                            disabled={loading}
+                          >
+                            Confirm
+                          </button>
+                        )}
+                        {loading ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          <button
+                            onClick={() =>
+                              handleRejectReservation(reservation.id)
+                            }
+                            className="text-red-600 hover:text-red-900"
+                            disabled={loading}
+                          >
+                            Reject
+                          </button>
+                        )}
                       </>
                     )}
 
                     {reservation.status === "confirmed" && (
-                      <button
-                        onClick={() => handleCancelReservation(reservation.id)}
-                        className="text-red-600 hover:text-red-900"
-                        disabled={loading}
-                      >
-                        Cancel
-                      </button>
+                      <>
+                        {loading ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          <button
+                            onClick={() =>
+                              handleCancelReservation(reservation.id)
+                            }
+                            className="text-red-600 hover:text-red-900"
+                            disabled={loading}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>
@@ -490,14 +515,18 @@ const ReservationManager = () => {
               {selectedReservation.status === "pending" && (
                 <>
                   <button
-                    onClick={() => handleConfirmReservation(selectedReservation.id)}
+                    onClick={() =>
+                      handleConfirmReservation(selectedReservation.id)
+                    }
                     className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
                     disabled={loading}
                   >
                     Confirm
                   </button>
                   <button
-                    onClick={() => handleRejectReservation(selectedReservation.id)}
+                    onClick={() =>
+                      handleRejectReservation(selectedReservation.id)
+                    }
                     className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
                     disabled={loading}
                   >
@@ -508,7 +537,9 @@ const ReservationManager = () => {
 
               {selectedReservation.status === "confirmed" && (
                 <button
-                  onClick={() => handleCancelReservation(selectedReservation.id)}
+                  onClick={() =>
+                    handleCancelReservation(selectedReservation.id)
+                  }
                   className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
                   disabled={loading}
                 >
