@@ -251,7 +251,8 @@ export const confirmReservation = async (reservationId: number): Promise<Reserva
       },
       body: JSON.stringify({ 
         reservation_id: reservationId,
-        status: 'confirmed'
+        status: 'confirmed',
+        send_notification: true
       })
     });
     
@@ -293,7 +294,8 @@ export const rejectReservation = async (reservationId: number): Promise<Reservat
       body: JSON.stringify({ 
         reservation_id: reservationId,
         status: 'cancelled',
-        rejection_reason: 'Rejected by administrator'
+        rejection_reason: 'Rejected by administrator',
+        send_notification: true
       })
     });
     

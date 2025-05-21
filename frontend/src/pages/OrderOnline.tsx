@@ -9,6 +9,7 @@ import {
   clearCart
 } from '../services/orderService';
 import { useAuth } from '../contexts/AuthContext';
+import CreditCardForm, { PaymentResult } from '../components/creditCardForm';
 
 interface OrderFormData {
   name: string;
@@ -18,6 +19,12 @@ interface OrderFormData {
   delivery_instructions: string;
   payment_method: 'cash' | 'credit_card';
   order_type: 'delivery' | 'pickup';
+}
+
+// QR code related interfaces
+interface QRCodeData {
+  url: string;
+  orderId: number;
 }
 
 const OrderOnline = () => {
@@ -32,6 +39,13 @@ const OrderOnline = () => {
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [orderId, setOrderId] = useState<number | null>(null);
+  
+  const [showCreditCardForm, setShowCreditCardForm] = useState<boolean>(false);
+  const [paymentProcessing, setPaymentProcessing] = useState<boolean>(false);
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
+  
+  // QR code state
+  const [qrCode, setQrCode] = useState<QRCodeData | null>(null);
   
   // Form data state
   const [formData, setFormData] = useState<OrderFormData>({
@@ -115,8 +129,6 @@ const OrderOnline = () => {
       // Save to localStorage
       saveCartToLocalStorage(updatedCart);
       
-      // Show toast notification
-      
       return updatedCart;
     });
   };
@@ -150,6 +162,12 @@ const OrderOnline = () => {
       ...prev,
       [name]: value
     }));
+    
+    // If changing payment method, reset credit card form
+    if (name === 'payment_method') {
+      setShowCreditCardForm(false);
+      setPaymentResult(null);
+    }
   };
   
   const handleCheckout = () => {
@@ -159,36 +177,25 @@ const OrderOnline = () => {
     setShowCheckout(true);
   };
   
-  const handlePlaceOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError('');
+  const handlePaymentComplete = (result: PaymentResult) => {
+    setPaymentProcessing(false);
+    setPaymentResult(result);
+    
+    if (result.success) {
+      // Continue with order placement
+      submitOrderWithPayment(result);
+    } else {
+      // Display error to user
+      setFormError(result.error || 'Payment processing failed. Please try again.');
+    }
+  };
+  
+  const submitOrderWithPayment = async (paymentResult: PaymentResult) => {
     setPlacingOrder(true);
-    
-    // Basic validation
-    if (!formData.name || !formData.email || !formData.phone || !formData.address) {
-      setFormError('Please fill in all required fields');
-      setPlacingOrder(false);
-      return;
-    }
-    
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      setFormError('Please enter a valid email address');
-      setPlacingOrder(false);
-      return;
-    }
-    
-    // Phone validation (simple validation)
-    const phoneRegex = /^\+?[0-9\s\-()]{8,}$/;
-    if (!phoneRegex.test(formData.phone)) {
-      setFormError('Please enter a valid phone number');
-      setPlacingOrder(false);
-      return;
-    }
+    setFormError('');
     
     try {
-      // Prepare order data
+      // Prepare order data with payment details
       const orderData = {
         items: cart,
         customer_info: {
@@ -199,7 +206,11 @@ const OrderOnline = () => {
           delivery_instructions: formData.delivery_instructions
         },
         order_type: formData.order_type,
-        payment_method: formData.payment_method
+        payment_method: formData.payment_method,
+        payment_details: {
+          transaction_id: paymentResult.transactionId,
+          card_last4: paymentResult.cardLast4
+        }
       };
       
       // Place order
@@ -209,6 +220,11 @@ const OrderOnline = () => {
         // Order successful
         setOrderSuccess(true);
         setOrderId(response.order_id || null);
+        
+        // Generate QR code for order
+        if (response.order_id) {
+          generateOrderQRCode(response.order_id);
+        }
         
         // Clear cart
         clearCart();
@@ -225,6 +241,102 @@ const OrderOnline = () => {
     }
   };
   
+  const handlePlaceOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    
+    // Basic validation
+    if (!formData.name || !formData.email || !formData.phone || (formData.order_type === 'delivery' && !formData.address)) {
+      setFormError('Please fill in all required fields');
+      return;
+    }
+    
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setFormError('Please enter a valid email address');
+      return;
+    }
+    
+    // Phone validation (simple validation)
+    const phoneRegex = /^\+?[0-9\s\-()]{8,}$/;
+    if (!phoneRegex.test(formData.phone)) {
+      setFormError('Please enter a valid phone number');
+      return;
+    }
+    
+    // Handle payment based on selected method
+    if (formData.payment_method === 'credit_card' && !paymentResult?.success) {
+      // Show credit card form if not already paid
+      setShowCreditCardForm(true);
+      return; // Stop form submission until payment is processed
+    } else {
+      // For cash payments or if credit card is already processed, proceed directly
+      setPlacingOrder(true);
+      
+      try {
+        // Prepare order data
+        const orderData = {
+          items: cart,
+          customer_info: {
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone,
+            address: formData.address,
+            delivery_instructions: formData.delivery_instructions
+          },
+          order_type: formData.order_type,
+          payment_method: formData.payment_method,
+          // Include payment details if credit card was used
+          payment_details: paymentResult?.success ? {
+            transaction_id: paymentResult.transactionId,
+            card_last4: paymentResult.cardLast4
+          } : undefined
+        };
+        
+        // Place order
+        const response = await placeOrder(orderData);
+        
+        if (response.success) {
+          // Order successful
+          setOrderSuccess(true);
+          setOrderId(response.order_id || null);
+          
+          // Generate QR code for order
+          if (response.order_id) {
+            generateOrderQRCode(response.order_id);
+          }
+          
+          // Clear cart
+          clearCart();
+          setCart([]);
+        } else {
+          // Order failed
+          setFormError(response.error || 'Failed to place order. Please try again.');
+        }
+      } catch (error) {
+        console.error('Error placing order:', error);
+        setFormError('An error occurred while placing your order. Please try again later.');
+      } finally {
+        setPlacingOrder(false);
+      }
+    }
+  };
+  
+  const generateOrderQRCode = (orderId: number) => {
+    // In a real implementation, you would call your backend to generate a QR code
+    // For this example, we'll use a public QR code service
+    
+    // Create URL to track this order
+    const orderTrackingUrl = `${window.location.origin}/order-tracking/${orderId}`;
+    
+    // Set QR code data
+    setQrCode({
+      url: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(orderTrackingUrl)}`,
+      orderId
+    });
+  };
+  
   const calculateTotal = () => {
     return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
   };
@@ -234,7 +346,61 @@ const OrderOnline = () => {
     ? menuItems.filter(item => item.category_id === activeCategory)
     : menuItems;
 
-    if (orderSuccess) {    return (      <div className="container mx-auto px-4 py-16">        <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-8 text-center">          <svg className="mx-auto h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />          </svg>          <h2 className="text-2xl font-bold mt-4 mb-2">Order Placed Successfully!</h2>          <p className="text-gray-600 mb-2">            Thank you for your order. We've sent a confirmation to your email with all the details.          </p>          {orderId && (            <p className="font-medium mb-6">              Your order number: <span className="text-amber-600">#{orderId}</span>            </p>          )}          <div className="flex flex-col sm:flex-row justify-center gap-4">            <Link               to="/"               className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium px-6 py-3 rounded-md inline-block transition"            >              Return to Home            </Link>            {orderId && (              <Link                 to={`/order-tracking/${orderId}`}                 className="bg-amber-500 hover:bg-amber-600 text-white font-medium px-6 py-3 rounded-md inline-block transition"              >                Track Your Order              </Link>            )}            {isAuthenticated && (              <Link                 to="/account/orders"                 className="bg-amber-500 hover:bg-amber-600 text-white font-medium px-6 py-3 rounded-md inline-block transition"              >                View My Orders              </Link>            )}          </div>        </div>      </div>    );  }
+  if (orderSuccess) {
+    return (
+      <div className="container mx-auto px-4 py-16">
+        <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-8 text-center">
+          <svg className="mx-auto h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <h2 className="text-2xl font-bold mt-4 mb-2">Order Placed Successfully!</h2>
+          <p className="text-gray-600 mb-2">
+            Thank you for your order. We've sent a confirmation to your email with all the details.
+          </p>
+          {orderId && (
+            <p className="font-medium mb-4">
+              Your order number: <span className="text-amber-600">#{orderId}</span>
+            </p>
+          )}
+          
+          {/* Display QR code if available */}
+          {qrCode && (
+            <div className="mb-6">
+              <p className="text-sm text-gray-600 mb-2">Scan this QR code to track your order:</p>
+              <div className="flex justify-center">
+                <img src={qrCode.url} alt="Order QR Code" className="h-32 w-32" />
+              </div>
+            </div>
+          )}
+          
+          <div className="flex flex-col sm:flex-row justify-center gap-4">
+            <Link 
+              to="/"
+              className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium px-6 py-3 rounded-md inline-block transition"
+            >
+              Return to Home
+            </Link>
+            {orderId && (
+              <Link
+                to={`/order-tracking/${orderId}`}
+                className="bg-amber-500 hover:bg-amber-600 text-white font-medium px-6 py-3 rounded-md inline-block transition"
+              >
+                Track Your Order
+              </Link>
+            )}
+            {isAuthenticated && (
+              <Link
+                to="/orders"
+                className="bg-amber-500 hover:bg-amber-600 text-white font-medium px-6 py-3 rounded-md inline-block transition"
+              >
+                View My Orders
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -256,8 +422,13 @@ const OrderOnline = () => {
       {showCheckout ? (
         <div className="max-w-2xl mx-auto">
           <button 
-            onClick={() => setShowCheckout(false)} 
+            onClick={() => {
+              setShowCheckout(false);
+              setShowCreditCardForm(false);
+              setPaymentResult(null);
+            }} 
             className="mb-6 flex items-center text-amber-600 hover:text-amber-700"
+            disabled={paymentProcessing || placingOrder}
           >
             <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -266,109 +437,77 @@ const OrderOnline = () => {
           </button>
           
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-2xl font-bold mb-6">Checkout</h2>
-            
-            {formError && (
-              <div className="bg-red-50 text-red-700 p-3 rounded-md mb-4">
-                {formError}
-              </div>
-            )}
-            
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-3">Order Summary</h3>
-              {cart.map(item => (
-                <div key={item.item_id} className="flex justify-between items-center py-2 border-b">
-                  <div>
-                    <span className="font-medium">{item.name}</span>
-                    <span className="text-gray-600 ml-2">x{item.quantity}</span>
+            {!showCreditCardForm ? (
+              <>
+                <h2 className="text-2xl font-bold mb-6">Checkout</h2>
+                
+                {formError && (
+                  <div className="bg-red-50 text-red-700 p-3 rounded-md mb-4">
+                    {formError}
                   </div>
-                  <span>${(item.price * item.quantity).toFixed(2)}</span>
-                </div>
-              ))}
-              <div className="flex justify-between items-center py-3 font-bold mt-3">
-                <span>Total</span>
-                <span>${calculateTotal().toFixed(2)}</span>
-              </div>
-            </div>
-            
-            <form onSubmit={handlePlaceOrder}>
-              <h3 className="text-lg font-semibold mb-3">Delivery Information</h3>
-              
-              <div className="grid md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label htmlFor="name" className="block text-gray-700 text-sm font-medium mb-1">
-                    Full Name*
-                  </label>
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    value={formData.name}
-                    onChange={handleFormChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    required
-                  />
+                )}
+                
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold mb-3">Order Summary</h3>
+                  {cart.map(item => (
+                    <div key={item.item_id} className="flex justify-between items-center py-2 border-b">
+                      <div>
+                        <span className="font-medium">{item.name}</span>
+                        <span className="text-gray-600 ml-2">x{item.quantity}</span>
+                      </div>
+                      <span>${(item.price * item.quantity).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center py-3 font-bold mt-3">
+                    <span>Total</span>
+                    <span>${calculateTotal().toFixed(2)}</span>
+                  </div>
                 </div>
                 
-                <div>
-                  <label htmlFor="phone" className="block text-gray-700 text-sm font-medium mb-1">
-                    Phone Number*
-                  </label>
-                  <input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    value={formData.phone}
-                    onChange={handleFormChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <label htmlFor="email" className="block text-gray-700 text-sm font-medium mb-1">
-                  Email Address*
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  required
-                />
-              </div>
-              
-              <div className="mb-4">
-                <label htmlFor="order_type" className="block text-gray-700 text-sm font-medium mb-1">
-                  Order Type*
-                </label>
-                <select
-                  id="order_type"
-                  name="order_type"
-                  value={formData.order_type}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  required
-                >
-                  <option value="delivery">Delivery</option>
-                  <option value="pickup">Pickup</option>
-                </select>
-              </div>
-              
-              {formData.order_type === 'delivery' && (
-                <>
+                <form onSubmit={handlePlaceOrder}>
+                  <h3 className="text-lg font-semibold mb-3">Delivery Information</h3>
+                  
+                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label htmlFor="name" className="block text-gray-700 text-sm font-medium mb-1">
+                        Full Name*
+                      </label>
+                      <input
+                        id="name"
+                        name="name"
+                        type="text"
+                        value={formData.name}
+                        onChange={handleFormChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="phone" className="block text-gray-700 text-sm font-medium mb-1">
+                        Phone Number*
+                      </label>
+                      <input
+                        id="phone"
+                        name="phone"
+                        type="tel"
+                        value={formData.phone}
+                        onChange={handleFormChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
                   <div className="mb-4">
-                    <label htmlFor="address" className="block text-gray-700 text-sm font-medium mb-1">
-                      Delivery Address*
+                    <label htmlFor="email" className="block text-gray-700 text-sm font-medium mb-1">
+                      Email Address*
                     </label>
                     <input
-                      id="address"
-                      name="address"
-                      type="text"
-                      value={formData.address}
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
                       onChange={handleFormChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
                       required
@@ -376,70 +515,124 @@ const OrderOnline = () => {
                   </div>
                   
                   <div className="mb-4">
-                    <label htmlFor="delivery_instructions" className="block text-gray-700 text-sm font-medium mb-1">
-                      Delivery Instructions
+                    <label htmlFor="order_type" className="block text-gray-700 text-sm font-medium mb-1">
+                      Order Type*
                     </label>
-                    <textarea
-                      id="delivery_instructions"
-                      name="delivery_instructions"
-                      value={formData.delivery_instructions}
+                    <select
+                      id="order_type"
+                      name="order_type"
+                      value={formData.order_type}
                       onChange={handleFormChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      rows={2}
-                      placeholder="E.g., Apartment number, gate code, etc."
-                    />
+                      required
+                    >
+                      <option value="delivery">Delivery</option>
+                      <option value="pickup">Pickup</option>
+                    </select>
                   </div>
-                </>
-              )}
-              
-              <div className="mb-6">
-                <label className="block text-gray-700 text-sm font-medium mb-1">
-                  Payment Method*
-                </label>
-                <div className="flex space-x-4">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="payment_method"
-                      value="credit_card"
-                      checked={formData.payment_method === 'credit_card'}
-                      onChange={handleFormChange}
-                      className="mr-2"
-                    />
-                    Pay with Card
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="payment_method"
-                      value="cash"
-                      checked={formData.payment_method === 'cash'}
-                      onChange={handleFormChange}
-                      className="mr-2"
-                    />
-                    Cash on Delivery
-                  </label>
-                </div>
-              </div>
-              
-              <button 
-                type="submit" 
-                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-md transition disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={placingOrder}
-              >
-                {placingOrder ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Processing...
-                  </span>
-                ) : (
-                  'Place Order'
-                )}
-              </button>
-            </form>
+                  
+                  {formData.order_type === 'delivery' && (
+                    <>
+                      <div className="mb-4">
+                        <label htmlFor="address" className="block text-gray-700 text-sm font-medium mb-1">
+                          Delivery Address*
+                        </label>
+                        <input
+                          id="address"
+                          name="address"
+                          type="text"
+                          value={formData.address}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          required
+                        />
+                      </div>
+                      
+                      <div className="mb-4">
+                        <label htmlFor="delivery_instructions" className="block text-gray-700 text-sm font-medium mb-1">
+                          Delivery Instructions
+                        </label>
+                        <textarea
+                          id="delivery_instructions"
+                          name="delivery_instructions"
+                          value={formData.delivery_instructions}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          rows={2}
+                          placeholder="E.g., Apartment number, gate code, etc."
+                        />
+                      </div>
+                    </>
+                  )}
+                  
+                  <div className="mb-6">
+                    <label className="block text-gray-700 text-sm font-medium mb-1">
+                      Payment Method*
+                    </label>
+                    <div className="flex space-x-4">
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="payment_method"
+                          value="credit_card"
+                          checked={formData.payment_method === 'credit_card'}
+                          onChange={handleFormChange}
+                          className="mr-2"
+                        />
+                        Pay with Card
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="payment_method"
+                          value="cash"
+                          checked={formData.payment_method === 'cash'}
+                          onChange={handleFormChange}
+                          className="mr-2"
+                        />
+                        Cash on Delivery
+                      </label>
+                    </div>
+                  </div>
+                  
+                  {/* Display payment result if available */}
+                  {paymentResult && paymentResult.success && (
+                    <div className="bg-green-50 text-green-700 p-3 rounded-md mb-4 flex items-center">
+                      <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Payment approved! Card ending in {paymentResult.cardLast4}
+                    </div>
+                  )}
+                  
+                  <button 
+                    type="submit" 
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-md transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {placingOrder ? (
+                      <span className="flex items-center justify-center">
+                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Processing...
+                      </span>
+                    ) : formData.payment_method === 'credit_card' && !paymentResult?.success ? (
+                      'Enter Payment Details'
+                    ) : (
+                      'Place Order'
+                    )}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <CreditCardForm 
+                amount={calculateTotal()} 
+                onPaymentComplete={handlePaymentComplete}
+                onCancel={() => setShowCreditCardForm(false)}
+                isProcessing={paymentProcessing}
+              />
+            )}
           </div>
         </div>
       ) : (
